@@ -60,14 +60,23 @@ def _gpu_stats():
 
 # ── Fonts ──────────────────────────────────────────────────────────────────
 def _font(size):
-    for path in [
-        r"C:\Users\hedik\AppData\Local\Microsoft\Windows\Fonts\Montserrat-SemiBold.ttf",
-        r"C:\Users\hedik\AppData\Local\Microsoft\Windows\Fonts\Montserrat-Medium.ttf",
-        r"C:\Windows\Fonts\arialbd.ttf",
-    ]:
+    _home = pathlib.Path.home()
+    candidates = [
+        # Windows (user fonts)
+        _home / "AppData/Local/Microsoft/Windows/Fonts/Montserrat-SemiBold.ttf",
+        _home / "AppData/Local/Microsoft/Windows/Fonts/Montserrat-Medium.ttf",
+        pathlib.Path("C:/Windows/Fonts/arialbd.ttf"),
+        # Linux
+        pathlib.Path("/usr/share/fonts/truetype/montserrat/Montserrat-SemiBold.ttf"),
+        pathlib.Path("/usr/share/fonts/truetype/montserrat/Montserrat-Medium.ttf"),
+        _home / ".fonts/Montserrat-SemiBold.ttf",
+        _home / ".fonts/Montserrat-Medium.ttf",
+        pathlib.Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    ]
+    for path in candidates:
         try:
-            return ImageFont.truetype(path, size)
-        except OSError:
+            return ImageFont.truetype(str(path), size)
+        except (OSError, TypeError):
             pass
     return ImageFont.load_default()
 

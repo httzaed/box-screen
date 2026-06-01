@@ -14,9 +14,10 @@ import render
 from panel import Panel, WIDTH, HEIGHT, _image_to_jpeg, _send_frame
 
 # ── Config ─────────────────────────────────────────────────────────────────
-VIDEO_FILE  = r"C:\Users\hedik\Downloads\This One Still Works.mp4"
-IMAGE_FILE  = r"C:\Users\hedik\Downloads\jungle-landscape-pixel-art-style.png"
-ASCII_FILE  = Path(__file__).parent / "ascii_bg.txt"
+_HERE       = Path(__file__).parent
+VIDEO_FILE  = str(next(_HERE.glob("*.mp4"),  _HERE / "video.mp4"))
+IMAGE_FILE  = str(next(_HERE.glob("*.png"),  _HERE / "image.png"))
+ASCII_FILE  = _HERE / "ascii_bg.txt"
 
 MODES       = ["ascii_vhs", "video", "image"]
 FPS_VIDEO   = 25
@@ -58,11 +59,15 @@ def _send(img: Image.Image):
     _panel.send_image(frame, fit=False)
 
 def _mono(size):
-    for path in [
-        r"C:\Windows\Fonts\consola.ttf",
-        r"C:\Windows\Fonts\cour.ttf",
-        r"C:\Windows\Fonts\lucon.ttf",
-    ]:
+    candidates = [
+        "C:/Windows/Fonts/consola.ttf",
+        "C:/Windows/Fonts/cour.ttf",
+        "C:/Windows/Fonts/lucon.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+        "/usr/share/fonts/truetype/courier-prime/CourierPrime-Regular.ttf",
+    ]
+    for path in candidates:
         try:
             return ImageFont.truetype(path, size)
         except OSError:
