@@ -178,7 +178,8 @@ try:
         vhs_lines = vhs_frame(base_lines, COLS, frame, INTENSITY)
         bg        = render_ascii_frame(vhs_lines, frame)
 
-        # Cadrans par dessus
+        # HUD terminal/matrix par dessus
+        render.LAYOUT              = "terminal"
         render.background_override = bg
         out = render.build_frame()
         panel.send_image(out, fit=False)

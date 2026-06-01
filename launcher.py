@@ -10,8 +10,21 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from pynput import keyboard
 
+import sys as _sys
+import json as _json
+
 import render
 from panel import Panel, WIDTH, HEIGHT, _image_to_jpeg, _send_frame
+
+# ── LED wave (projet ~/LEDs) ────────────────────────────────────────────────
+_sys.path.insert(0, str(Path(__file__).parent.parent / "LEDs"))
+try:
+    import led_wave as _led
+    _LED = True
+except ImportError:
+    _led = None
+    _LED = False
+    print("[LED] led_wave introuvable — LEDs désactivées")
 
 # ── Config ─────────────────────────────────────────────────────────────────
 _HERE       = Path(__file__).parent
@@ -25,17 +38,36 @@ FPS_ASCII   = 14
 FPS_IMAGE   = 1
 
 # ── ASCII VHS config ───────────────────────────────────────────────────────
-ASCII_START = (200,  80, 255)
-ASCII_END   = (255, 160,  50)
+ASCII_START = (221,   0, 255)   # violet/rose vif — identique à st_wave.py
+ASCII_END   = (255,  40,   0)   # orange-rouge pétant — identique à st_wave.py
 ASCII_BG    = (6, 4, 12)
 ASCII_SIZE  = 13
 INTENSITY   = 0.4
+
+# ── LED couleurs par mode ───────────────────────────────────────────────────
+_LED_COLORS = {
+    "ascii_vhs": (ASCII_START, ASCII_END),           # violet → orange comme l'écran
+    "image":     ((0, 162, 216), (0, 216, 54)),      # cyan ciel → vert jungle
+    "video":     ((255, 20, 100), (50, 100, 220)),      # rose vif → bleu acier
+}
+
+def _palette_colors():
+    """Lit palette.json (écrit par video.py --palette) pour coller aux couleurs vidéo."""
+    try:
+        p  = _json.loads((_HERE / "palette.json").read_text())
+        c1 = tuple(p["accent"])
+        c2 = tuple(p["text"][0]) if p.get("text") else (200, 200, 200)
+        return c1, c2
+    except Exception:
+        return (0xFF, 0x35, 0x00), (0xDD, 0x00, 0xFF)
 
 # ── State ──────────────────────────────────────────────────────────────────
 _mode_idx   = 0
 _mode_lock  = threading.Lock()
 _stop_event = threading.Event()
 _panel      = None
+_led_stop   = None
+_led_thread = None
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -147,9 +179,9 @@ def _ascii_vhs_loop(stop):
                 if char not in stamps: continue
                 x = x_off + col * cw
                 if x < 0 or x + cw > WIDTH: continue
-                color = grad[col] * dim          # (3,)
-                stamp = stamps[char]             # (ch, cw, 3) mask 0..1
-                canvas[y:y+ch, x:x+cw] += stamp * color  # broadcast
+                color = grad[col] * dim
+                stamp = stamps[char]
+                canvas[y:y+ch, x:x+cw] += stamp * color
 
         np.clip(canvas, 0, 255, out=canvas)
         img = Image.fromarray(canvas.astype(np.uint8))
@@ -217,7 +249,7 @@ MODE_FNS = {
 }
 
 MODE_LAYOUTS = {
-    "ascii_vhs": "split",
+    "ascii_vhs": "terminal",
     "video":     "full",
     "image":     "clock",
 }
@@ -226,11 +258,18 @@ _current_stop   = None
 _current_thread = None
 
 def _start_mode(idx):
-    global _current_stop, _current_thread
+    global _current_stop, _current_thread, _led_stop, _led_thread
     if _current_stop:
         _current_stop.set()
     if _current_thread:
         _current_thread.join(timeout=2)
+
+    # Arrêter l'ancien thread LED
+    if _led_stop:
+        _led_stop.set()
+    if _led_thread:
+        _led_thread.join(timeout=2)
+
     name = MODES[idx % len(MODES)]
     render.LAYOUT = MODE_LAYOUTS[name]
     stop = threading.Event()
@@ -238,6 +277,17 @@ def _start_mode(idx):
     _current_stop   = stop
     _current_thread = t
     t.start()
+
+    # Démarrer le thread LED correspondant
+    if _LED:
+        fixed = _LED_COLORS[name]
+        get_c = (lambda: fixed) if fixed else _palette_colors
+        ls = threading.Event()
+        lt = threading.Thread(target=_led.run, args=(ls, get_c), daemon=True)
+        _led_stop   = ls
+        _led_thread = lt
+        lt.start()
+
     print(f"Mode : {name}")
 
 def _switch(delta):
@@ -305,5 +355,7 @@ if __name__ == "__main__":
         print("\nArrêt")
     finally:
         if _current_stop: _current_stop.set()
+        if _led_stop:     _led_stop.set()
+        if _LED:          _led.shutdown()
         listener.stop()
         _panel.close()

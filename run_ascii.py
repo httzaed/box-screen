@@ -15,8 +15,26 @@ from panel import Panel, WIDTH, HEIGHT
 
 # ── Config ─────────────────────────────────────────────────────────────────
 ASCII_FILE  = Path(__file__).parent / "ascii_bg.txt"
-CHAR_COLOR  = (150, 150, 200)   # couleur des @
+GRAD_LEFT   = (140, 82, 255)    # #8C52FF
+GRAD_RIGHT  = (255, 160, 0)    # #FFA000 orange vif
 BG_COLOR    = (8, 8, 14)      # fond
+
+
+def _gradient_color(col: int, max_col: int) -> tuple:
+    """Interpolation HSL — hue shortpath, saturation et luminosité maintenues élevées."""
+    import colorsys
+    t = col / max(1, max_col - 1)
+    hl, sl, ll = colorsys.rgb_to_hls(*(c/255 for c in GRAD_LEFT))
+    hr, sr, lr = colorsys.rgb_to_hls(*(c/255 for c in GRAD_RIGHT))
+    # chemin court sur la roue des teintes
+    dh = hr - hl
+    if dh > 0.5:  dh -= 1.0
+    if dh < -0.5: dh += 1.0
+    h = (hl + t * dh) % 1.0
+    s = sl + t * (sr - sl)
+    l = ll + t * (lr - ll)
+    r, g, b = colorsys.hls_to_rgb(h, l, s)
+    return (int(r*255), int(g*255), int(b*255))
 # ── Charger la police monospace ────────────────────────────────────────────
 def _mono(size):
     for path in [
@@ -55,7 +73,7 @@ def _render_ascii_bg() -> Image.Image:
         y = row * ch
         for col, char in enumerate(line):
             if char not in (" ", "\r"):
-                draw.text((col * cw, y), char, font=font, fill=CHAR_COLOR)
+                draw.text((col * cw, y), char, font=font, fill=_gradient_color(col, max_col))
 
     # Resize pour tenir dans le panel
     return canvas.resize((WIDTH, HEIGHT), Image.LANCZOS)
