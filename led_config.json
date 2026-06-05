@@ -1,0 +1,13 @@
+{
+  "case_mode": "static",
+  "fan_mode": "beat_pulse",
+  "case_color": "violet",
+  "case_color2": "cyan",
+  "fan_color": "pink",
+  "fan_color2": "cyan",
+  "case_speed": 1.0,
+  "fan_speed": 0.5,
+  "case_length": 1.0,
+  "brightness": 1.0,
+  "case_decay": 0.1
+}

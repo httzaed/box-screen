@@ -7,7 +7,7 @@ import threading
 import time
 import math
 
-SPEED = 0.03   # s entre frames (~33 fps)
+SPEED = 0.0345   # s entre frames (~29 fps, -15% vitesse)
 BAND  = 18     # largeur d'une bande en LEDs
 
 # ── Singleton OpenRGB ────────────────────────────────────────────────────────
@@ -27,6 +27,25 @@ def _is_openrgb_running() -> bool:
         return False
 
 
+def _find_openrgb() -> str | None:
+    """Trouve l'exécutable OpenRGB sur Windows ou Linux."""
+    import shutil, os
+    # Cherche dans PATH d'abord
+    found = shutil.which("openrgb") or shutil.which("OpenRGB")
+    if found:
+        return found
+    # Chemins Windows courants
+    candidates = [
+        r"C:\Program Files\OpenRGB\OpenRGB.exe",
+        r"C:\Program Files (x86)\OpenRGB\OpenRGB.exe",
+        os.path.expandvars(r"%LOCALAPPDATA%\OpenRGB\OpenRGB.exe"),
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
+    return None
+
+
 def _ensure_server() -> bool:
     global _server, _device
     with _lock:
@@ -36,23 +55,30 @@ def _ensure_server() -> bool:
             if _is_openrgb_running():
                 print("[LED] OpenRGB déjà en cours — connexion directe")
             else:
+                openrgb_exe = _find_openrgb()
+                if openrgb_exe is None:
+                    print("[LED] OpenRGB introuvable — LEDs désactivées")
+                    return False
                 _server = subprocess.Popen(
-                    ["/usr/bin/openrgb", "--server", "--noautoconnect"],
+                    [openrgb_exe, "--server", "--noautoconnect"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
                 time.sleep(1.5)
             from openrgb import OpenRGBClient
-            client = OpenRGBClient()
-            client.connect()
+            client = OpenRGBClient()   # connexion dans le constructeur
             for d in client.devices:
                 if "TUF" in d.name or "B550" in d.name or "Aura" in d.name:
                     _device = d
                     break
             if _device is None:
                 _device = client.devices[0]
-            _device.set_mode("direct")
-            print(f"[LED] {len(_device.leds)} LEDs sur '{_device.name}'")
+            # set_mode : essaie "direct" puis "Direct" (sensibilité à la casse selon version)
+            try:
+                _device.set_mode("direct")
+            except Exception:
+                _device.set_mode("Direct")
+            print(f"[LED] {len(_device.leds)} LEDs sur '{_device.name}' — mode direct OK")
             return True
         except Exception as e:
             print(f"[LED] init error: {e}")

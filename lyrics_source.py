@@ -1,0 +1,1886 @@
+"""
+lyrics_source.py — Paroles en temps réel via lrclib.net
+  • Détecte la chanson via Windows Media Session (même méthode que bpm_source)
+  • Fetch les paroles synchronisées (LRC) depuis lrclib.net (gratuit, sans clé)
+  • Lit la position de lecture via WinRT pour suivre la ligne courante
+  • Expose get_state() → artist, title, lines, current_idx
+
+Expose :
+  start() / stop()
+  get_state() -> dict | None
+"""
+import threading
+import time
+import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# ── État partagé ──────────────────────────────────────────────────────────────
+_lock    = threading.Lock()
+_state   = None          # dict: artist, title, lines, current_idx, synced
+_running = False
+_thread  = None
+
+# ── Beat tracking pour sync audio ──────────────────────────────────────────────
+_beat_counter     = 0       # nombre de beats depuis début chanson
+_last_beat_ts     = None    # timestamp du dernier beat (time.monotonic)
+_last_beat_seq    = None    # séquence BPM source
+_song_start_beats = None    # beat_seq quand la chanson a commencé
+_est_bpm          = None    # BPM estimé depuis les beats
+_last_sync_pos    = None    # dernière position connue (secondes) resyncée sur beat
+
+# ── Auto-calibration offset (Kalman filter) ────────────────────────────────────────
+_calibration_active    = False  # en cours de calibration?
+_calibration_samples   = []     # historique des samples (timestamp, offset)
+_calibrated_offset    = None   # offset calibré pour cette chanson
+_calibration_done      = False  # calibration terminée pour cette chanson?
+_first_listen_mode     = False  # True si c'est la première écoute jamais de cette chanson
+_next_sample_pos       = 5.0    # prochaine position (secondes) où on prend un sample
+_sample_interval       = 5.0    # intervalle entre samples (5s pour bonne précision)
+
+# ── Kalman filter state ────────────────────────────────────────────────────────────
+_kf_state      = None    # état estimé (offset)
+_kf_covariance = None    # covariance de l'estimation
+_kf_process_noise   = 0.05  # bruit du processus (stabilité de l'offset)
+_kf_measurement_noise = 0.2   # bruit de mesure (imprécision des timestamps)
+
+# ── Calibration statistiques ────────────────────────────────────────────────────────
+_calibration_stats = {       # stats sur les samples
+    "mean": None,
+    "std": None,
+    "outliers_removed": 0,
+    "confidence": 0.0,
+}
+
+# ── Annulation de recherche ─────────────────────────────────────────────────────────
+_current_search_key = None    # clé de la recherche en cours (pour annulation)
+
+# ── YouTube extension sync ─────────────────────────────────────────────────────
+_youtube_pos      = None    # position depuis extension (secondes)
+_youtube_pos_t    = None    # timestamp monotonic quand reçu
+_youtube_artist   = None
+_youtube_title    = None
+_youtube_video_id = None
+_youtube_captions_tried = False  # se souvenir si on a déjà essayé les captions pour cette vidéo
+_youtube_last_video_id = None  # dernier video_id confirmé comme actif
+_youtube_video_ids_seen = {}  # timestamp de dernière vue de chaque video_id
+
+
+def set_youtube_position(video_id: str, artist: str, title: str, position: float):
+    """
+    Appelé par le control_server quand l'extension Chrome envoie des données.
+    Filtre les vidéos de playlist pour ne garder que la vraie vidéo active.
+    """
+    global _youtube_pos, _youtube_pos_t, _youtube_artist, _youtube_title, _youtube_video_id
+    global _youtube_last_video_id, _youtube_video_ids_seen, _youtube_captions_tried
+
+    now = time.monotonic()
+    _youtube_video_ids_seen[video_id] = now
+
+    # Détection de la vraie vidéo active :
+    # - Position > 1.0s (évite les buffer/reset)
+    # - Même video_id que précédemment (stabilité)
+    # - OU nouvelle vidéo avec position avancée
+
+    current_pos = float(position) if position is not None else None
+
+    # Si la position est trop basse ou None, ignorer (playlist buffer)
+    if current_pos is None or current_pos < 1.0:
+        return  # Ignore les vidéos de playlist en buffer
+
+    # Si on a déjà une vidéo active et que c'est différente, vérifier si c'est vraiment un changement
+    if _youtube_last_video_id and _youtube_last_video_id != video_id:
+        # Vérifier si l'ancienne vidéo est encore "vivante" (vue récemment)
+        last_seen = _youtube_video_ids_seen.get(_youtube_last_video_id, 0)
+        if now - last_seen < 2.0:  # L'ancienne est encore envoyée = playlist
+            # Garder l'ancienne si elle continue d'être envoyée
+            return
+
+    # Nouvelle vidéo active confirmée
+    with _lock:
+        _youtube_pos = current_pos
+        _youtube_pos_t = now
+        _youtube_artist = artist
+        _youtube_title = title
+        _youtube_video_id = video_id
+        _youtube_last_video_id = video_id
+
+# ── Kalman filter pour calibration offset ────────────────────────────────────────
+def _kalman_init():
+    """Initialise le Kalman filter pour une nouvelle calibration."""
+    global _kf_state, _kf_covariance, _calibration_stats
+    _kf_state = 0.0  # offset initial estimé
+    _kf_covariance = 1.0  # incertitude initiale élevée
+    _calibration_stats = {
+        "mean": None,
+        "std": None,
+        "outliers_removed": 0,
+        "confidence": 0.0,
+    }
+
+def _kalman_update(measurement: float) -> float:
+    """
+    Met à jour le Kalman filter avec une nouvelle mesure d'offset.
+    Retourne l'estimation mise à jour.
+    """
+    global _kf_state, _kf_covariance
+
+    if _kf_state is None:
+        _kalman_init()
+
+    # 1) Prédiction (l'offset est stable)
+    # x_predicted = x_previous (offset ne change pas)
+    # P_predicted = P_previous + Q (incertitude augmente)
+    _kf_covariance += _kf_process_noise
+
+    # 2) Gain de Kalman
+    # K = P / (P + R)
+    kalman_gain = _kf_covariance / (_kf_covariance + _kf_measurement_noise)
+
+    # 3) Mise à jour de l'état
+    # x = x + K * (measurement - x)
+    _kf_state = _kf_state + kalman_gain * (measurement - _kf_state)
+
+    # 4) Mise à jour de la covariance
+    # P = (1 - K) * P
+    _kf_covariance = (1 - kalman_gain) * _kf_covariance
+
+    return _kf_state
+
+def _remove_outliers_iqr(samples: list) -> list:
+    """
+    Élimine les outliers en utilisant l'IQR (Interquartile Range).
+    Retourne les samples filtrés.
+    """
+    if len(samples) < 5:
+        return samples  # pas assez de données
+
+    offsets = [s[1] for s in samples]  # (timestamp, offset)
+    q1 = sorted(offsets)[len(offsets) // 4]
+    q3 = sorted(offsets)[3 * len(offsets) // 4]
+    iqr = q3 - q1
+
+    lower_bound = q1 - 1.5 * iqr
+    upper_bound = q3 + 1.5 * iqr
+
+    filtered = [(ts, off) for ts, off in samples if lower_bound <= off <= upper_bound]
+    removed = len(samples) - len(filtered)
+
+    global _calibration_stats
+    _calibration_stats["outliers_removed"] += removed
+
+    if removed > 0:
+        print(f"[LYRICS] 🧹 {removed} outlier(s) éliminé(s) (IQR: [{lower_bound:.2f}, {upper_bound:.2f}])")
+
+    return filtered
+
+def _update_calibration_stats(samples: list):
+    """Met à jour les statistiques de calibration."""
+    if not samples:
+        return
+
+    offsets = [s[1] for s in samples]
+
+    # Moyenne et écart-type
+    import statistics as _stats
+    try:
+        mean = _stats.mean(offsets)
+        std = _stats.stdev(offsets) if len(offsets) > 1 else 0.0
+    except:
+        mean = sum(offsets) / len(offsets)
+        std = 0.0
+
+    # Confiance : inverse de l'écart-type (normalisé 0-1)
+    confidence = max(0.0, min(1.0, 1.0 - std / 2.0))
+
+    _calibration_stats["mean"] = mean
+    _calibration_stats["std"] = std
+    _calibration_stats["confidence"] = confidence
+
+def _get_weighted_average(samples: list) -> float:
+    """
+    Calcule une moyenne pondérée avec exponentielle décroissante.
+    Samples récents = plus de poids.
+    """
+    if not samples:
+        return 0.0
+
+    # Poids exponentiel : w = exp(-lambda * age)
+    # lambda ajusté pour que les vieux aient moins de poids
+    import math
+    now_ts = time.monotonic()
+
+    total_weight = 0.0
+    weighted_sum = 0.0
+
+    for ts, offset in samples:
+        age = now_ts - ts
+        weight = math.exp(-0.1 * age)  # décroissance lente
+        weighted_sum += offset * weight
+        total_weight += weight
+
+    return weighted_sum / total_weight if total_weight > 0 else 0.0
+
+# ── WinRT helpers ─────────────────────────────────────────────────────────────
+
+def _winrt_fetch() -> tuple | None:
+    """
+    Appelle WinRT depuis un thread frais (requis pour l'init COM sur Windows).
+    Retourne (artist, title, position_s) ou None.
+    """
+    result = [None]
+    error = [None]
+
+    def _worker():
+        try:
+            import asyncio
+            from winrt.windows.media.control import \
+                GlobalSystemMediaTransportControlsSessionManager as SMTC
+
+            async def _fetch():
+                mgr  = await SMTC.request_async()
+                if mgr is None:
+                    return None
+                sess = mgr.get_current_session()
+                if sess is None:
+                    return None
+                props = await sess.try_get_media_properties_async()
+                if props is None:
+                    return None
+                artist = (props.artist or "").strip()
+                title  = (props.title  or "").strip()
+                if not title:
+                    return None
+                # Position de lecture
+                try:
+                    tl  = sess.get_timeline_properties()
+                    pos = tl.position
+                    pos_s = pos.total_seconds() if hasattr(pos, "total_seconds") else pos.duration / 1e7
+                except Exception:
+                    pos_s = None
+                return artist, title, pos_s
+
+            result[0] = asyncio.run(_fetch())
+        except Exception as e:
+            error[0] = e
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join(timeout=4.0)  # 4 secondes
+    if t.is_alive():
+        print("[LYRICS] WARNING: WinRT timeout - thread still running")
+        return None
+    if error[0]:
+        print(f"[LYRICS] WinRT error: {type(error[0]).__name__}: {error[0]}")
+        return None
+    return result[0]
+
+
+def _get_now_playing():
+    """Retourne (artist, title) ou None."""
+    r = _winrt_fetch()
+    if r is None:
+        return None
+    artist, title, _ = r
+    if not title:
+        return None
+    # Nettoie les noms (retire " - Topic - " etc.)
+    if artist:
+        artist = _remove_topic_noise(artist)
+    if " - " in title and not artist:
+        parts = [p.strip() for p in title.split(" - ", 1)]
+        return parts[0], parts[1]
+    return (artist or ""), title
+
+
+def _get_playback_position() -> float | None:
+    """Retourne la position de lecture en secondes, ou None."""
+    r = _winrt_fetch()
+    return r[2] if r else None
+
+
+# ── LRC parser ────────────────────────────────────────────────────────────────
+
+_LRC_RE = re.compile(r"^\[(\d{1,3}):(\d{2})\.(\d{1,3})\](.*)")
+
+def _parse_lrc(lrc_text: str) -> list[tuple[float, str]]:
+    """Retourne [(seconds, line_text), ...] trié par temps."""
+    lines = []
+    for raw in lrc_text.splitlines():
+        m = _LRC_RE.match(raw.strip())
+        if not m:
+            continue
+        minutes   = int(m.group(1))
+        seconds   = int(m.group(2))
+        centis_s  = m.group(3)
+        # normalise en fractions de seconde (centièmes ou millièmes)
+        frac      = int(centis_s) / (10 ** len(centis_s))
+        ts        = minutes * 60 + seconds + frac
+        text      = m.group(4).strip()
+        lines.append((ts, text))
+    lines.sort(key=lambda x: x[0])
+    return lines
+
+
+# ── Nettoyage artiste / titre ─────────────────────────────────────────────────
+
+# Suffixes YouTube Music / streaming à ignorer
+# Match : "ArtistVEVO", "Artist - VEVO", "Artist - Topic", etc.
+_ARTIST_NOISE = re.compile(
+    r'[-–]?\s*(Topic|Official|VEVO|Music|Records?|Channel|Artist)\s*$',
+    re.IGNORECASE
+)
+
+def _remove_topic_noise(text: str) -> str:
+    """Retire ' - Topic - ' et autres bruits YouTube des noms."""
+    if not text:
+        return text
+    # Retire " - Topic - " (avec espaces autour)
+    text = text.replace(" - Topic - ", " - ")
+    # Retire aussi " - Topic" ou "Topic -" (en fin de chaîne)
+    text = text.replace(" - Topic", "").replace("Topic - ", "")
+    # Nettoie les espaces doubles
+    return " ".join(text.split())
+
+def _clean_artist(artist: str) -> str:
+    """Retire les suffixes parasites type '- Topic', '- VEVO', 'VEVO', etc."""
+    a = " ".join(artist.split())
+
+    # Cas particulier: "georgemichaelVEVO" → "georgemichael" → "George Michael"
+    # Détecte camelCase AVANT de retirer les suffixes
+    if len(a) > 4 and not ' ' in a:
+        has_mid_upper = any(c.isupper() for c in a[1:-1])
+        if has_mid_upper:
+            # Essaie de séparer sur les majuscules
+            parts = []
+            current = a[0]
+            for c in a[1:]:
+                if c.isupper() and current and current[-1].islower():
+                    parts.append(current)
+                    current = c
+                else:
+                    current += c
+            if current:
+                parts.append(current)
+            if len(parts) >= 2:
+                a = ' '.join(parts)
+
+    # Maintenant retire les suffixes (VEVO, Topic, etc.)
+    a = _ARTIST_NOISE.sub('', a).strip()
+    # Retire aussi un éventuel " - " en fin
+    a = re.sub(r'\s*[-–]\s*$', '', a).strip()
+
+    return a
+
+
+def _clean_title(title: str) -> list[str]:
+    """
+    Retourne plusieurs variantes du titre à essayer :
+    - tel quel (espaces normalisés)
+    - sans l'année finale (ex: "Song Name 1980" → "Song Name")
+    - sans les tags entre parenthèses/crochets (ex: "Song (Remaster)" → "Song")
+    """
+    import re as _re
+    candidates = []
+    t = " ".join(title.split())  # normalise espaces multiples
+    candidates.append(t)
+
+    # Supprimer l'année en fin (4 chiffres)
+    no_year = _re.sub(r'\s+\d{4}\s*$', '', t).strip()
+    if no_year and no_year != t:
+        candidates.append(no_year)
+
+    # Supprimer contenu entre parenthèses/crochets
+    no_paren = _re.sub(r'\s*[\(\[][^\)\]]*[\)\]]\s*', ' ', no_year or t).strip()
+    if no_paren and no_paren not in candidates:
+        candidates.append(no_paren)
+
+    return candidates
+
+
+# ── Cache lyrics persistant (JSON) ─────────────────────────────────────────────────────
+_CACHE_FILE = "lyrics_cache.json"
+_cache_lock = threading.Lock()
+_cache_dirty = False  # flag pour savoir si on doit sauvegarder
+
+
+def _load_cache() -> dict:
+    """Charge le cache depuis le fichier JSON."""
+    global _cache_dirty
+    import json as _json, pathlib
+    path = pathlib.Path(__file__).parent / _CACHE_FILE
+    try:
+        if path.exists():
+            data = _json.loads(path.read_text(encoding='utf-8'))
+            print(f"[LYRICS] cache chargé: {len(data)} chansons")
+            return data
+    except Exception as e:
+        print(f"[LYRICS] erreur chargement cache: {e}")
+    return {}
+
+
+def _save_cache(cache: dict):
+    """Sauvegarde le cache vers le fichier JSON."""
+    import json as _json, pathlib
+    path = pathlib.Path(__file__).parent / _CACHE_FILE
+    try:
+        path.write_text(_json.dumps(cache, ensure_ascii=False, indent=2), encoding='utf-8')
+        # Plus de log ici pour éviter la pollution (la sauvegarde est transparente)
+    except Exception as e:
+        print(f"[LYRICS] erreur sauvegarde cache: {e}")
+
+
+# Cache en mémoire + lazy load
+_disk_cache: dict = None
+
+
+def _get_disk_cache() -> dict:
+    """Retourne le cache (le charge si nécessaire)."""
+    global _disk_cache
+    if _disk_cache is None:
+        _disk_cache = _load_cache()
+    return _disk_cache
+
+
+def _cache_key(artist: str, title: str) -> str:
+    return f"{artist.lower()}|{title.lower()}"
+
+
+def _get_cached_lyrics(artist: str, title: str) -> dict | None:
+    """Retourne les lyrics depuis le cache, ou None."""
+    key = _cache_key(artist, title)
+    cache = _get_disk_cache()
+    entry = cache.get(key)
+    if entry:
+        # Met à jour les stats d'écoute
+        import time
+        entry["last_played"] = time.time()
+        entry["play_count"] = entry.get("play_count", 0) + 1
+        _mark_cache_dirty()
+        print(f"[LYRICS] cache HIT: {artist} - {title} (joué {entry['play_count']} fois)")
+        return {
+            "synced": entry.get("synced", []),
+            "plain": entry.get("plain", ""),
+            "offset": entry.get("offset", 0.5)
+        }
+    return None
+
+
+def _set_cached_lyrics(artist: str, title: str, synced: list, plain: str, offset: float = 0.5):
+    """Sauvegarde les lyrics dans le cache."""
+    key = _cache_key(artist, title)
+    cache = _get_disk_cache()
+    import time
+    cache[key] = {
+        "artist": artist,
+        "title": title,
+        "synced": synced,
+        "plain": plain,
+        "offset": offset,
+        "last_played": time.time(),
+        "play_count": 1
+    }
+    _mark_cache_dirty()
+    print(f"[LYRICS] cache SAVE: {artist} - {title}")
+
+
+def _mark_cache_dirty():
+    """Marque le cache comme sale (à sauvegarder)."""
+    global _cache_dirty
+    _cache_dirty = True
+
+
+def _flush_cache_if_dirty():
+    """Sauvegarde le cache si modifié."""
+    global _cache_dirty
+    if _cache_dirty:
+        _save_cache(_get_disk_cache())
+        _cache_dirty = False
+
+
+def set_song_offset(artist: str, title: str, offset: float):
+    """Ajuste l'offset pour une chanson spécifique."""
+    key = _cache_key(artist, title)
+    cache = _get_disk_cache()
+    if key in cache:
+        cache[key]["offset"] = offset
+        _mark_cache_dirty()
+        _flush_cache_if_dirty()
+        print(f"[LYRICS] offset ajusté: {artist} - {title} → {offset}s")
+    else:
+        print(f"[LYRICS] impossible d'ajuster offset: chanson pas dans le cache")
+
+
+def get_song_offset(artist: str, title: str) -> float | None:
+    """Retourne l'offset personnalisé pour une chanson, ou None."""
+    key = _cache_key(artist, title)
+    cache = _get_disk_cache()
+    if key in cache:
+        return cache[key].get("offset")
+    return None
+
+
+# Anciens noms pour compatibilité
+def _get_cached(artist: str, title: str) -> dict | None:
+    return _get_cached_lyrics(artist, title)
+
+
+def _set_cached(artist: str, title: str, result: dict | None):
+    if result:
+        _set_cached_lyrics(artist, title, result.get("synced", []), result.get("plain", ""))
+
+# ── Fetch lyrics ──────────────────────────────────────────────────────────────
+
+def _lrclib_get(artist: str, title: str, timeout: float = 12.0):  # Timeout augmenté (lrclib est lent)
+    """lrclib.net API (gratuit, sync+plain).
+
+    Stratégie pour MAXIMISER les paroles synchronisées :
+      1) /api/get  → correspondance exacte artiste/titre (renvoie le LRC sync
+         le plus fiable quand il existe).
+      2) /api/search → en secours, mais on ne prend PAS bêtement le premier
+         résultat : on privilégie une version qui a réellement `syncedLyrics`,
+         puis à défaut une version plain.
+    """
+    import urllib.request, urllib.parse, urllib.error, json as _json
+    headers = {"User-Agent": "BoxScreen (https://github.com/) lyrics-sync"}
+    plain_fallback = None
+
+    def _has_synced(entry):
+        return bool(entry and entry.get("syncedLyrics"))
+
+    # 1) /api/get : correspondance exacte (meilleur taux de sync)
+    try:
+        params = urllib.parse.urlencode({
+            "artist_name": artist,
+            "track_name": title,
+        })
+        req = urllib.request.Request(f"https://lrclib.net/api/get?{params}", headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            entry = _json.loads(r.read().decode())
+            if _has_synced(entry):
+                print("[LYRICS]   lrclib /get: version synchronisée trouvée")
+                return entry
+            # /get a répondu mais sans sync → on garde en réserve, on tente search
+            if entry and entry.get("plainLyrics"):
+                plain_fallback = entry
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            print(f"[LYRICS]   lrclib /get error: {e.code}")
+    except Exception as e:
+        print(f"[LYRICS]   lrclib /get error: {e}")
+
+    # 2) /api/search : on privilégie la première version AVEC syncedLyrics
+    q = f"{artist} {title}".strip()
+    params = urllib.parse.urlencode({"q": q})
+    try:
+        req = urllib.request.Request(f"https://lrclib.net/api/search?{params}", headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            results = _json.loads(r.read().decode())
+            if isinstance(results, list) and results:
+                synced = next((x for x in results if _has_synced(x)), None)
+                if synced:
+                    print(f"[LYRICS]   lrclib /search: sync trouvé parmi {len(results)} résultats")
+                    return synced
+                # aucune version synchronisée → premier plain dispo
+                plain = next((x for x in results if x.get("plainLyrics")), results[0])
+                return plain
+    except Exception as e:
+        print(f"[LYRICS]   lrclib /search error: {e}")
+
+    # 3) Rien de mieux que le plain de /get s'il existait
+    return plain_fallback
+
+
+def _lyrics_ovh_get(artist: str, title: str, timeout: float = 1.5):  # 2s → 1.5s
+    """lyrics.ovh API (gratuit, plain only)."""
+    import urllib.request, json as _json
+    try:
+        a_enc = urllib.parse.quote(artist)
+        t_enc = urllib.parse.quote(title)
+        req = urllib.request.Request(f"https://api.lyrics.ovh/v1/{a_enc}/{t_enc}")
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = _json.loads(r.read().decode())
+            if data.get("lyrics"):
+                return {"plainLyrics": data["lyrics"], "syncedLyrics": ""}
+    except Exception:
+        pass
+    return None
+
+
+def _genius_fetch(artist: str, title: str):
+    """Genius.com via recherche HTML (fallback, plus complet mais plus lent)."""
+    import urllib.request, urllib.parse, json as _json, re as _re
+    try:
+        # Recherche Genius API avec User-Agent valide
+        q = f"{artist} {title}".strip()
+        params = urllib.parse.urlencode({"q": q})
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        req = urllib.request.Request(
+            f"https://genius.com/api/search/multi?{params}",
+            headers=headers
+        )
+        with urllib.request.urlopen(req, timeout=5) as r:
+            data = _json.loads(r.read().decode())
+            hits = data.get("response", {}).get("sections", [])
+            for section in hits:
+                for hit in section.get("hits", []):
+                    if hit.get("type") == "song":
+                        path = hit.get("result", {}).get("path")
+                        if path:
+                            # Récupère les lyrics depuis la page
+                            url = f"https://genius.com{path}"
+                            req2 = urllib.request.Request(url, headers=headers)
+                            with urllib.request.urlopen(req2, timeout=5) as r2:
+                                html = r2.read().decode()
+                                # Genius met les lyrics dans <div data-lyrics="true">
+                                match = _re.search(r'<div data-lyrics="true">([^<]+)</div>', html, _re.DOTALL)
+                                if not match:
+                                    # Fallback: cherche dans le JSON embedded
+                                    match = _re.search(r'"content":"((?:[^"\\]|\\.)*)"', html)
+                                if match:
+                                    # Unescape JSON
+                                    lyrics = match.group(1).replace('\\n', '\n').replace('\\"', '"').replace('\\/', '/')
+                                    if len(lyrics) > 100:  # sanity check
+                                        return {"plainLyrics": lyrics, "syncedLyrics": ""}
+    except Exception as e:
+        pass
+    return None
+
+
+def _chartlyrics_get(artist: str, title: str, timeout: float = 2.0):
+    """ChartLyrics API (gratuit, nécessite parsing)."""
+    import urllib.request, urllib.parse
+    try:
+        params = urllib.parse.urlencode({"artist": artist, "song": title})
+        req = urllib.request.Request(f"http://api.chartlyrics.com/apiv1.asmx/SearchLyricDirect?{params}", timeout=timeout)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            # ChartLyrics retourne XML, on extrait le Lyric
+            import xml.etree.ElementTree as ET
+            content = r.read().decode()
+            root = ET.fromstring(content)
+            # Cherche <Lyric>...</Lyric>
+            lyric_elem = root.find('.//Lyric')
+            if lyric_elem is not None and lyric_elem.text:
+                return {"plainLyrics": lyric_elem.text, "syncedLyrics": ""}
+    except Exception:
+        pass
+    return None
+
+
+# ── YouTube OAuth2 ─────────────────────────────────────────────────────────────
+_YOUTUBE_OAUTH_FILE = "youtube_oauth.json"
+_YOUTUBE_CLIENT_ID = "36717679904-4a4tq23ooo123dg348f6k3jens68mlq6.apps.googleusercontent.com"
+_YOUTUBE_CLIENT_SECRET = "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"
+
+# ── Quota backoff ───────────────────────────────────────────────────────────────
+# La YouTube Data API a un quota journalier (10 000 unités par défaut) qui se
+# réinitialise à minuit, heure du Pacifique (PT). Une fois un 403 "quota
+# exceeded" rencontré, inutile de retenter avant le reset : on persiste un
+# timestamp d'expiration sur disque pour désactiver tout appel OAuth d'ici là.
+_QUOTA_BACKOFF_FILE = "youtube_quota_backoff.json"
+_quota_blocked_until = 0.0  # epoch seconds (time.time) ; 0 = pas bloqué
+
+
+def _pacific_midnight_epoch_after(now_epoch: float) -> float:
+    """Renvoie l'epoch du prochain minuit Pacifique (reset du quota YouTube)."""
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import datetime, timedelta
+        pt = ZoneInfo("America/Los_Angeles")
+        now_pt = datetime.fromtimestamp(now_epoch, pt)
+        next_midnight = (now_pt + timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        return next_midnight.timestamp()
+    except Exception:
+        # Fallback grossier : +24h (PT ~ UTC-7/-8, l'imprécision est sans risque)
+        return now_epoch + 24 * 3600
+
+
+def _load_quota_backoff() -> float:
+    """Charge le timestamp de blocage quota depuis le disque (0 si aucun/expiré)."""
+    global _quota_blocked_until
+    import json as _json, os as _os
+    try:
+        if _os.path.exists(_QUOTA_BACKOFF_FILE):
+            with open(_QUOTA_BACKOFF_FILE) as f:
+                _quota_blocked_until = float(_json.load(f).get("blocked_until", 0))
+    except Exception:
+        _quota_blocked_until = 0.0
+    return _quota_blocked_until
+
+
+def _quota_is_blocked() -> bool:
+    """True si on est encore dans la fenêtre de backoff quota."""
+    global _quota_blocked_until
+    if _quota_blocked_until == 0.0:
+        _load_quota_backoff()
+    if _quota_blocked_until and time.time() < _quota_blocked_until:
+        return True
+    if _quota_blocked_until and time.time() >= _quota_blocked_until:
+        _quota_blocked_until = 0.0  # fenêtre passée, on réactive
+    return False
+
+
+def _set_quota_blocked():
+    """Marque le quota comme épuisé jusqu'au prochain reset PT, persiste sur disque."""
+    global _quota_blocked_until
+    import json as _json
+    _quota_blocked_until = _pacific_midnight_epoch_after(time.time())
+    try:
+        with open(_QUOTA_BACKOFF_FILE, "w") as f:
+            _json.dump({"blocked_until": _quota_blocked_until}, f)
+    except Exception:
+        pass
+    try:
+        from datetime import datetime
+        when = datetime.fromtimestamp(_quota_blocked_until).strftime("%H:%M")
+        print(f"[LYRICS]   ⏸ quota YouTube épuisé — OAuth désactivé jusqu'au reset (~{when})")
+    except Exception:
+        print("[LYRICS]   ⏸ quota YouTube épuisé — OAuth désactivé jusqu'au reset")
+
+
+def _get_youtube_credentials():
+    """Get OAuth2 credentials for YouTube Data API."""
+    import json as _json
+    import os as _os
+    from google.oauth2.credentials import Credentials
+    import google.auth.transport.requests
+
+    # Load existing credentials if available
+    if _os.path.exists(_YOUTUBE_OAUTH_FILE):
+        try:
+            with open(_YOUTUBE_OAUTH_FILE, 'r') as f:
+                token_data = _json.load(f)
+            creds = Credentials.from_authorized_user_info(token_data)
+            # Refresh if expired
+            if creds.expired and creds.refresh_token:
+                creds.refresh(google.auth.transport.requests.Request())
+                # Save refreshed token
+                with open(_YOUTUBE_OAUTH_FILE, 'w') as f:
+                    f.write(creds.to_json())
+            return creds
+        except Exception as e:
+            print(f"[LYRICS] OAuth2 load error: {e}")
+
+    # No credentials, need to authorize
+    print(f"[LYRICS] YouTube OAuth2 authorization required...")
+    print(f"[LYRICS] Please run: python -c \"from lyrics_source import _youtube_auth_setup; _youtube_auth_setup()\"")
+    return None
+
+
+def _youtube_auth_setup():
+    """Setup YouTube OAuth2 credentials using local server flow."""
+    import json as _json
+    from google.oauth2.credentials import Credentials
+    from google_auth_oauthlib.flow import InstalledAppFlow
+
+    SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
+    PORT = 8888  # Fixed port - must be registered in Google Cloud Console
+
+    print(f"[LYRICS] Using port {PORT} for OAuth2...")
+
+    flow = InstalledAppFlow.from_client_config(
+        {
+            "installed": {
+                "client_id": _YOUTUBE_CLIENT_ID,
+                "client_secret": _YOUTUBE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [f"http://127.0.0.1:{PORT}"]
+            }
+        },
+        scopes=SCOPES
+    )
+
+    print("[LYRICS] Opening browser for OAuth2 authorization...")
+    print(f"[LYRICS] Make sure http://127.0.0.1:{PORT} is added in Google Cloud Console!")
+    creds = flow.run_local_server(host='127.0.0.1', port=PORT, open_browser=True)
+
+    # Save credentials
+    with open(_YOUTUBE_OAUTH_FILE, 'w') as f:
+        f.write(creds.to_json())
+
+    print(f"[LYRICS] OAuth2 credentials saved to {_YOUTUBE_OAUTH_FILE}")
+    return creds
+
+
+def _fetch_youtube_captions_oauth(video_id: str, creds) -> dict | None:
+    """Fetch captions using YouTube Data API with OAuth2."""
+    try:
+        import urllib.request
+        import urllib.error
+        import json as _json
+        import re as _re
+
+        # Get access token
+        if creds.expired and creds.refresh_token:
+            creds.refresh(google.auth.transport.requests.Request())
+
+        access_token = creds.token
+        print(f"[LYRICS]   OAuth2 token valid: {not creds.expired}, scopes: {creds.scopes}")
+
+        # Get available captions
+        url = f"https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId={video_id}"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "BoxScreen/1.0",
+            "Authorization": f"Bearer {access_token}"
+        })
+
+        try:
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = _json.loads(response.read().decode())
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode()
+            print(f"[LYRICS]   List captions error: {e.code} - {error_body[:300]}")
+            # 403 + "quota" => quota journalier épuisé : on coupe l'OAuth jusqu'au reset
+            if e.code == 403 and "quota" in error_body.lower():
+                _set_quota_blocked()
+            return None
+
+        if not data.get("items"):
+            print(f"[LYRICS]   No captions found")
+            return None
+
+        # Find English caption (prefer manual over auto)
+        caption_id = None
+        lang_code = None
+
+        for track_lang in ['en', 'fr']:
+            for item in data.get("items", []):
+                snippet = item.get("snippet", {})
+                if snippet.get("languageCode") == track_lang:
+                    caption_id = item.get("id")
+                    lang_code = track_lang
+                    # Prefer non-auto
+                    if snippet.get("trackKind") != "asr":
+                        break
+            if caption_id:
+                break
+
+        # Fallback to any available
+        if not caption_id and data.get("items"):
+            first = data["items"][0]
+            caption_id = first.get("id")
+            lang_code = first.get("snippet", {}).get("languageCode", "unknown")
+
+        if not caption_id:
+            print(f"[LYRICS]   No suitable caption track")
+            return None
+
+        print(f"[LYRICS]   Found caption: {lang_code}, downloading...")
+
+        # Download caption content (SRT format)
+        download_url = f"https://www.googleapis.com/youtube/v3/captions/{caption_id}?tfmt=srt"
+        print(f"[LYRICS]   Download URL: {download_url[:50]}...")
+        req2 = urllib.request.Request(download_url, headers={
+            "User-Agent": "BoxScreen/1.0",
+            "Authorization": f"Bearer {access_token}"
+        })
+
+        try:
+            with urllib.request.urlopen(req2, timeout=10) as response:
+                print(f"[LYRICS]   Response status: {response.status}")
+                content = response.read().decode('utf-8-sig')
+                print(f"[LYRICS]   Content length: {len(content)} chars")
+        except urllib.error.HTTPError as e:
+            # Read error response for more details
+            error_body = e.read().decode()
+            print(f"[LYRICS]   Caption download HTTP {e.code}: {error_body[:400]}")
+            return None
+
+        # Parse SRT format
+        synced = _parse_srt_content(content)
+
+        if synced:
+            plain = '\n'.join(text for _, text in synced)
+            print(f"[LYRICS] OK YouTube OAuth2: {len(synced)} lines")
+            return {"synced": synced, "plain": plain}
+        else:
+            print(f"[LYRICS]   Could not parse SRT")
+    except Exception as e:
+        print(f"[LYRICS]   YouTube OAuth2 error: {e}")
+    return None
+
+
+def _parse_srt_content(content: str) -> list:
+    """Parse SRT format content into (timestamp, text) tuples."""
+    import re as _re
+    synced = []
+
+    # SRT format:
+    # 1
+    # 00:00:00,000 --> 00:00:03,000
+    # Text here
+    # <blank line>
+
+    lines = content.strip().split('\n')
+    i = 0
+
+    while i < len(lines):
+        line = lines[i].strip()
+
+        # Look for timestamp line: 00:00:00,000 --> 00:00:03,000
+        ts_match = _re.match(r'(\d+):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d+):(\d{2}):(\d{2}),(\d{3})', line)
+        if ts_match:
+            # Use start time
+            hours = int(ts_match.group(1))
+            minutes = int(ts_match.group(2))
+            seconds = int(ts_match.group(3))
+            millis = int(ts_match.group(4))
+            timestamp = hours * 3600 + minutes * 60 + seconds + millis / 1000.0
+
+            # Next lines are the text until empty line or next number
+            i += 1
+            text_parts = []
+            while i < len(lines):
+                next_line = lines[i].strip()
+                # Stop at empty line or next subtitle number
+                if not next_line or next_line.isdigit():
+                    break
+                # Skip timestamps
+                if _re.match(r'\d+:\d{2}:\d{2},\d{3}', next_line):
+                    i += 1
+                    continue
+                text_parts.append(next_line)
+                i += 1
+
+            text = ' '.join(text_parts).strip()
+            # Clean up artifacts
+            text = _re.sub(r'\[.*?\]', '', text)
+            text = _re.sub(r'♪', '', text)
+            text = text.strip()
+
+            if text:
+                synced.append((timestamp, text))
+
+        else:
+            i += 1
+
+    return synced
+
+
+_CAPTION_NOISE_RE = re.compile(
+    '|'.join([
+        r'^\[[^\]]+\]$',  # [Anything in brackets]
+        r'^♪+$',           # Musical notes only
+        r'^\s+$',          # Whitespace only
+    ]),
+    re.IGNORECASE,
+)
+
+
+def _clean_caption_line(text: str) -> str:
+    """Nettoie une ligne de sous-titre (crochets, notes de musique)."""
+    text = re.sub(r'\[.*?\]', '', text)  # Remove bracketed content
+    text = re.sub(r'♪', '', text)         # Remove musical notes
+    return text.strip()
+
+
+def _entries_to_lyrics(entries, source: str) -> dict | None:
+    """Convertit [(start, text), ...] en dict {synced, plain}, filtre le bruit."""
+    synced = []
+    for ts, text in entries:
+        text = (text or '').strip()
+        if not text or _CAPTION_NOISE_RE.match(text):
+            continue
+        text = _clean_caption_line(text)
+        if text:
+            synced.append((ts, text))
+
+    if synced:
+        plain = '\n'.join(t for _, t in synced)
+        print(f"[LYRICS] OK YouTube captions ({source}): {len(synced)} lines")
+        return {"synced": synced, "plain": plain}
+    print(f"[LYRICS]   All lines were filtered as noise ({source})")
+    return None
+
+
+def _fetch_captions_transcript_api(video_id: str) -> dict | None:
+    """Récupère les sous-titres via youtube-transcript-api (pas d'OAuth)."""
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+        import os
+
+        print(f"[LYRICS]   -> Trying youtube-transcript-api...")
+
+        # Auth via cookies (contourne le blocage IP) si un cookies.txt est fourni.
+        # Compatible nouvelles versions (proxies/http_client) et anciennes (cookie_path).
+        cookies_file = os.environ.get("YTDLP_COOKIES_FILE")
+        api = None
+        if cookies_file and os.path.exists(cookies_file):
+            try:
+                import requests
+                from http.cookiejar import MozillaCookieJar
+                jar = MozillaCookieJar(cookies_file)
+                jar.load(ignore_discard=True, ignore_expires=True)
+                sess = requests.Session()
+                sess.cookies = jar
+                api = YouTubeTranscriptApi(http_client=sess)
+                print(f"[LYRICS]   transcript-api: cookies file = {cookies_file}")
+            except TypeError:
+                # Ancienne signature: pas de http_client -> fallback cookie_path
+                try:
+                    api = YouTubeTranscriptApi(cookie_path=cookies_file)
+                    print(f"[LYRICS]   transcript-api: cookie_path = {cookies_file}")
+                except Exception:
+                    api = None
+            except Exception as ce:
+                print(f"[LYRICS]   transcript-api cookies error: {str(ce)[:60]}")
+                api = None
+        if api is None:
+            api = YouTubeTranscriptApi()
+
+        transcripts = None
+        for lang in ['en', 'fr', 'es', 'de', 'it', 'pt', 'ja', 'ko', 'zh']:
+            try:
+                transcripts = api.fetch(video_id, languages=[lang])
+                print(f"[LYRICS]   Found captions in language: {lang}")
+                break
+            except Exception:
+                continue
+
+        if not transcripts:
+            try:
+                transcripts = api.fetch(video_id)
+                print(f"[LYRICS]   Found captions (default language)")
+            except Exception as e:
+                error_str = str(e)
+                if "RequestBlocked" in error_str or "IPBlocked" in error_str:
+                    print(f"[LYRICS]   YouTube blocking requests (IP blocked)")
+                else:
+                    print(f"[LYRICS]   No captions: {error_str[:60]}")
+                return None
+
+        raw = transcripts.to_raw_data() if transcripts else None
+        if not raw:
+            print(f"[LYRICS]   Empty transcript")
+            return None
+
+        entries = [(e.get('start', 0), e.get('text', '')) for e in raw]
+        return _entries_to_lyrics(entries, "transcript-api")
+    except Exception as e:
+        import warnings
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        print(f"[LYRICS]   youtube-transcript-api error: {e}")
+    return None
+
+
+def _parse_vtt(vtt_text: str) -> list:
+    """Parse un fichier WebVTT en [(start_seconds, text), ...]."""
+    entries = []
+    ts_re = re.compile(
+        r'(\d{2}):(\d{2}):(\d{2})[.,](\d{3})\s*-->\s*'
+        r'(\d{2}):(\d{2}):(\d{2})[.,](\d{3})'
+    )
+    blocks = re.split(r'\n\s*\n', vtt_text)
+    seen = set()
+    for block in blocks:
+        lines = block.strip().splitlines()
+        if not lines:
+            continue
+        start = None
+        text_lines = []
+        for line in lines:
+            m = ts_re.search(line)
+            if m:
+                h, mn, s, ms = int(m[1]), int(m[2]), int(m[3]), int(m[4])
+                start = h * 3600 + mn * 60 + s + ms / 1000.0
+            elif line.strip() and not line.strip().isdigit() \
+                    and not line.startswith('WEBVTT') \
+                    and not line.startswith('Kind:') \
+                    and not line.startswith('Language:'):
+                # Remove inline VTT tags like <00:00:01.000><c> ... </c>
+                clean = re.sub(r'<[^>]+>', '', line).strip()
+                if clean:
+                    text_lines.append(clean)
+        if start is not None and text_lines:
+            text = ' '.join(text_lines)
+            # yt-dlp auto-subs repeat lines across cues; dedupe consecutive
+            if text not in seen:
+                entries.append((start, text))
+                seen.add(text)
+    return entries
+
+
+def _fetch_captions_ytdlp(video_id: str) -> dict | None:
+    """Dernier recours: extrait les sous-titres via yt-dlp (auto-subs inclus)."""
+    import tempfile, os, glob, subprocess, sys
+
+    try:
+        import yt_dlp  # noqa: F401
+    except Exception:
+        print(f"[LYRICS]   yt-dlp not installed, skipping")
+        return None
+
+    print(f"[LYRICS]   -> Trying yt-dlp...")
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    # Patterns regex: YouTube nomme parfois les pistes "en-<id-vidéo>"
+    # (ex: en-nP7-2PuUl7o). 'en.*' matche toutes les variantes anglaises,
+    # idem pour les autres langues. Un 'en' nu seul ne matcherait rien.
+    langs = "en.*,fr.*,es.*,de.*,it.*,pt.*,ja.*,ko.*,zh.*"
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            out_tmpl = os.path.join(tmp, "%(id)s.%(ext)s")
+            cmd = [
+                sys.executable, "-m", "yt_dlp",
+                "--skip-download",
+                "--write-subs",
+                "--write-auto-subs",
+                "--sub-langs", langs,
+                "--sub-format", "vtt",
+                # Télécharge le solveur de challenges JS de YouTube (deno).
+                # Sans ça: "Signature solving failed" -> aucun sous-titre.
+                "--remote-components", "ejs:github",
+                "-o", out_tmpl,
+                url,
+            ]
+            # Auth via cookies du navigateur pour contourner le blocage IP.
+            # Surchargeable via env: YTDLP_COOKIES_BROWSER (ex: "firefox", "edge")
+            # ou YTDLP_COOKIES_FILE (chemin vers un cookies.txt exporté).
+            cookies_file = os.environ.get("YTDLP_COOKIES_FILE")
+            cookies_browser = os.environ.get("YTDLP_COOKIES_BROWSER", "chrome")
+            if cookies_file and os.path.exists(cookies_file):
+                cmd[-1:-1] = ["--cookies", cookies_file]
+                print(f"[LYRICS]   yt-dlp: cookies file = {cookies_file}")
+            elif cookies_browser and cookies_browser.lower() != "none":
+                cmd[-1:-1] = ["--cookies-from-browser", cookies_browser]
+                print(f"[LYRICS]   yt-dlp: cookies-from-browser = {cookies_browser}")
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=20  # 60s → 20s (plus rapide)
+            )
+            if proc.returncode != 0:
+                err = (proc.stderr or "").strip()[:120]
+                print(f"[LYRICS]   yt-dlp error: {err}")
+
+            vtt_files = sorted(glob.glob(os.path.join(tmp, "*.vtt")))
+            if not vtt_files:
+                print(f"[LYRICS]   yt-dlp found no subtitles")
+                return None
+
+            # Prefer non-auto subs (filename without 'auto') if present
+            vtt_files.sort(key=lambda f: ('auto' in os.path.basename(f).lower(), f))
+            with open(vtt_files[0], encoding='utf-8') as f:
+                vtt_text = f.read()
+
+            entries = _parse_vtt(vtt_text)
+            if not entries:
+                print(f"[LYRICS]   yt-dlp: empty after parse")
+                return None
+            return _entries_to_lyrics(entries, "yt-dlp")
+    except subprocess.TimeoutExpired:
+        print(f"[LYRICS]   yt-dlp timeout")
+    except Exception as e:
+        print(f"[LYRICS]   yt-dlp error: {e}")
+    return None
+
+
+def _fetch_youtube_captions(video_id: str) -> dict | None:
+    """Récupère les sous-titres YouTube.
+
+    Ordre: transcript-api (fiable, vidéos tierces) -> yt-dlp (si IP bloquée
+    ou auto-subs) -> OAuth2 (seulement utile pour tes propres vidéos).
+    """
+    print(f"[LYRICS]   Fetching captions for video_id: {video_id}")
+
+    # 1) youtube-transcript-api en priorité (pas d'OAuth, marche sur vidéos tierces)
+    result = _fetch_captions_transcript_api(video_id)
+    if result:
+        return result
+
+    # 2) yt-dlp en secours (IP blocking, auto-subs)
+    print(f"[LYRICS]   -> transcript-api failed, trying yt-dlp...")
+    result = _fetch_captions_ytdlp(video_id)
+    if result:
+        return result
+
+    # 3) OAuth2 en dernier (utile uniquement si la vidéo t'appartient).
+    #    On saute si le quota est déjà épuisé : inutile de brûler un appel.
+    if _quota_is_blocked():
+        print(f"[LYRICS]   -> OAuth2 sauté (quota YouTube épuisé jusqu'au reset)")
+        return None
+    creds = _get_youtube_credentials()
+    if creds:
+        print(f"[LYRICS]   -> yt-dlp failed, trying YouTube OAuth2...")
+        result = _fetch_youtube_captions_oauth(video_id, creds)
+        if result:
+            return result
+        print(f"[LYRICS]   -> OAuth2 failed too")
+
+    return None
+
+
+def _result_to_lyrics(data: dict) -> dict | None:
+    """Convertit un résultat lrclib en dict interne, ou None si vide."""
+    synced = data.get("syncedLyrics") or ""
+    plain  = data.get("plainLyrics")  or ""
+
+    if synced:
+        return {"synced": _parse_lrc(synced), "plain": plain}
+
+    if plain:
+        plain_lines = [(None, l) for l in plain.splitlines() if l.strip()]
+
+        # Essaie de créer des timestamps estimés avec le BPM
+        try:
+            import bpm_source as _bs
+            bpm = _bs.get_bpm()
+            if bpm and bpm > 0:
+                synced_with_bpm = _create_estimated_sync([l for _, l in plain_lines], bpm)
+                print(f"[LYRICS] 🎵 plain lyrics + BPM {bpm:.0f} → sync estimé")
+                return {"synced": synced_with_bpm, "plain": plain}
+        except Exception:
+            pass
+
+        return {"synced": plain_lines, "plain": plain}
+
+    return None
+
+
+def _fetch_lyrics(artist: str, title: str) -> dict | None:
+    """Cherche lyrics - plusieurs stratégies, fallback APIs."""
+    # Enregistre la clé de recherche pour détecter les changements
+    global _current_search_key
+    search_key = f"{artist.lower()}|{title.lower()}"
+    _current_search_key = search_key
+
+    # Check cache
+    cached = _get_cached(artist, title)
+    if cached is not None:
+        return cached
+
+    if cached is False:
+        return None
+
+    # Nettoie le titre - retire tout le junk à la fin
+    import re as _re
+    clean_title = title
+
+    # Retire [Official Video] [HD] (crochets)
+    clean_title = _re.sub(r'\s*[\(\[][^\)\]]*[\)\]]\s*$', '', clean_title).strip()
+    # Retire - Official - 1993, - Official Video, - HD etc (après un dash)
+    clean_title = _re.sub(r'\s*[-–]\s*(Official|Video|HD|Remastered|Remaster|Explicit|Lyrics)\b.*$', '', clean_title, flags=_re.IGNORECASE).strip()
+    # Retire l'année seule à la fin (ex: " - 1993")
+    clean_title = _re.sub(r'\s*[-–]\s*\d{4}\s*$', '', clean_title).strip()
+    # Retire les parenthèses contenant "Official", "Video", etc
+    clean_title = _re.sub(r'\s*[\(\[][^()\]]*?(Official|Video|HD|Remaster|Version|Lyrics|Audio)[^)\]]*?[\)\]]', '', clean_title, flags=_re.IGNORECASE).strip()
+
+    print(f"[LYRICS] recherche: {artist!r} / {clean_title!r}")
+
+    # Stratégies de recherche (artist, title)
+    searches = [
+        (artist, clean_title),           # standard
+        (artist, title),                 # original (au cas où)
+    ]
+
+    # Essaie aussi titre en minuscules pour certains APIs
+    if clean_title != clean_title.lower():
+        searches.append((artist, clean_title.lower()))
+
+    for a, t in searches:
+        print(f"[LYRICS]   -> essai: {a!r} / {t!r}")
+
+        # Essai 1: Genius (plus fiable, bon pour rap/francais)
+        try:
+            data = _genius_fetch(a, t)
+            if data:
+                result = _result_to_lyrics(data)
+                if result:
+                    print(f"[LYRICS] OK Genius: {a!r} / {t!r}")
+                    _set_cached(artist, title, result)
+                    return result
+        except Exception as e:
+            print(f"[LYRICS]   Genius erreur: {e}")
+
+        # Essai 2: lrclib.net (sync+plain) - timeout long pour synced lyrics
+        try:
+            data = _lrclib_get(a, t, timeout=15.0)  # 15s par requête
+            if data:
+                result = _result_to_lyrics(data)
+                if result:
+                    print(f"[LYRICS] OK lrclib: {a!r} / {t!r}")
+                    _set_cached(artist, title, result)
+                    return result
+                else:
+                    print(f"[LYRICS]   lrclib: data vide")
+            else:
+                print(f"[LYRICS]   lrclib: pas de réponse")
+        except Exception as e:
+            print(f"[LYRICS]   lrclib erreur: {e}")
+
+        # Essai 3: lyrics.ovh (plain uniquement - dernier recours)
+        try:
+            data = _lyrics_ovh_get(a, t, timeout=2.0)  # 2s
+            if data:
+                result = _result_to_lyrics(data)
+                if result:
+                    print(f"[LYRICS] OK lyrics.ovh: {a!r} / {t!r}")
+                    _set_cached(artist, title, result)
+                    return result
+        except Exception as e:
+            print(f"[LYRICS]   lyrics.ovh erreur: {e}")
+
+    # Cache l'échec
+    _set_cached(artist, title, None)
+    print(f"[LYRICS] ✗ pas trouvé (essayé {len(searches)} variantes)")
+    return None
+
+
+def _current_idx(lines: list, pos: float) -> int:
+    """Retourne l'index de la ligne active pour la position pos (secondes)."""
+    if not lines:
+        return 0
+    idx = 0
+    for i, (ts, _) in enumerate(lines):
+        if ts is None:
+            continue
+        if ts <= pos:
+            idx = i
+        else:
+            break
+    return idx
+
+
+def _has_sync(lyrics: dict | None) -> bool:
+    """True si les paroles ont des timestamps (au moins la 1re ligne)."""
+    return bool(lyrics and lyrics.get("synced") and lyrics["synced"][0][0] is not None)
+
+
+def _load_offset(artist: str, title: str) -> tuple[float | None, bool]:
+    """
+    Retourne (offset, calibration_done) pour une chanson à partir du cache.
+
+    Si la chanson a déjà un offset calibré (différent de la valeur par défaut),
+    on l'applique immédiatement et on considère la calibration terminée.
+    Sinon (None, False) → l'auto-calibration démarrera.
+    """
+    cached = get_song_offset(artist, title)
+    # 0.5 est la valeur par défaut posée à la création de l'entrée cache :
+    # on ne la traite pas comme une vraie calibration.
+    if cached is not None and abs(cached - 0.5) > 1e-6:
+        print(f"[LYRICS] 🎯 offset chargé du cache : {cached:+.2f}s")
+        return cached, True
+    return None, False
+
+
+def _create_estimated_sync(lines: list, bpm: float | None) -> list:
+    """
+    Crée des timestamps estimés pour des lyrics plain en utilisant le BPM.
+    Estime ~4-5 beats par ligne de lyrics.
+    """
+    if not lines or bpm is None or bpm <= 0:
+        return lines
+
+    # Estime: ~4-5 beats par ligne en moyenne (dépend du tempo)
+    beats_per_line = 4.5
+    seconds_per_beat = 60.0 / bpm
+    seconds_per_line = beats_per_line * seconds_per_beat
+
+    synced_lines = []
+    for i, (text) in enumerate(lines):
+        timestamp = i * seconds_per_line
+        synced_lines.append((timestamp, text))
+
+    return synced_lines
+
+
+def _load_lyrics_for(artist: str, title: str, video_id: str | None) -> dict | None:
+    """
+    Charge les paroles en PRIVILÉGIANT lrclib synchronisé (gratuit, sans quota).
+
+    Ordre :
+      1) lrclib / APIs (_fetch_lyrics) → si elles renvoient du SYNCHRONISÉ, on
+         s'arrête là : pas besoin de toucher au quota YouTube.
+      2) Captions YouTube → uniquement en secours, si on a un video_id ET que
+         lrclib n'a pas fourni de timestamps (et que le quota n'est pas épuisé).
+
+    Utilisé par les deux branches de _run (YouTube extension ET SMTC).
+    """
+    # 1) lrclib / APIs externes d'abord
+    lyrics = _fetch_lyrics(artist, title)
+    if _has_sync(lyrics):
+        print("[LYRICS] ✅ lrclib synchronisé — YouTube non sollicité")
+        return lyrics
+
+    # 2) Captions YouTube en secours seulement si lrclib n'a pas de sync
+    if video_id and not _quota_is_blocked():
+        print(f"[LYRICS]   -> lrclib sans sync, essai YouTube captions...")
+        yt_lyrics = _fetch_youtube_captions(video_id)
+        if _has_sync(yt_lyrics):
+            existing = _get_disk_cache().get(_cache_key(artist, title), {})
+            _set_cached_lyrics(
+                artist, title,
+                yt_lyrics["synced"], yt_lyrics.get("plain", ""),
+                existing.get("offset", 0.5),  # préserve l'offset calibré
+            )
+            _flush_cache_if_dirty()
+            print(f"[LYRICS] ✅ YouTube captions (sync) sauvegardées dans le cache")
+            return yt_lyrics
+    elif video_id:
+        print("[LYRICS]   -> YouTube ignoré (quota épuisé), on garde le plain lrclib")
+
+    # 3) Rien de synchronisé nulle part → on renvoie le plain de lrclib
+    return lyrics
+
+
+# ── Thread principal ──────────────────────────────────────────────────────────
+
+def _run():
+    global _state, _running, _beat_counter, _last_beat_ts, _last_beat_seq, _song_start_beats, _last_sync_pos
+    global _youtube_pos, _youtube_pos_t, _youtube_artist, _youtube_title, _youtube_video_id
+    global _calibration_active, _calibration_samples, _calibrated_offset, _calibration_done
+    global _first_listen_mode, _next_sample_pos, _sample_interval
+    global _kf_state, _kf_covariance, _kf_process_noise, _kf_measurement_noise, _calibration_stats
+    global _current_search_key, _youtube_captions_tried
+    global _youtube_last_video_id, _youtube_video_ids_seen
+
+    last_key       = None
+    lyrics         = None
+    artist         = ""
+    title          = ""
+    fail_count     = 0
+    FETCH_INTERVAL = 2.0
+    FAIL_CLEAR     = 15  # 15 échecs = 30 secondes avant de désactiver (était 5)
+    last_fetch_t   = -FETCH_INTERVAL
+
+    # ── Position tracking ─────────────────────────────────────────────────
+    smtc_pos        = None    # dernière position SMTC reçue (secondes)
+    smtc_pos_t      = None    # monotonic au moment où smtc_pos a été lu
+    song_start_t    = None    # monotonic quand la chanson a été détectée
+    pos_frozen_count = 0      # combien de fois SMTC a renvoyé la même valeur
+
+    def _raw_pos() -> float | None:
+        global _beat_counter, _last_sync_pos, _youtube_pos, _youtube_pos_t
+        """
+        Estime la position de lecture brute avec beat-sync.
+        Priorité: YouTube extension > beats > SMTC > timer local
+        """
+        # ── YouTube extension (priorité absolue) ───────────────────────────────────
+        if _youtube_pos is not None and _youtube_pos_t is not None:
+            elapsed = time.monotonic() - _youtube_pos_t
+            yt_current = _youtube_pos + elapsed
+            # Utiliser YouTube comme référence pour resync les beats
+            if _beat_counter >= 4:
+                try:
+                    import bpm_source as _bs
+                    bpm = _bs.get_bpm()
+                    if bpm and bpm > 0:
+                        # Resync beat_counter sur YouTube position
+                        expected_beats = int(yt_current * bpm / 60)
+                        if abs(expected_beats - _beat_counter) > 2:  # désync de +2 beats
+                            _beat_counter = expected_beats
+                            _last_sync_pos = yt_current
+                except Exception:
+                    pass
+            return yt_current
+
+        # ── Try beat-locked position ───────────────────────────────────────────
+        if _beat_counter >= 4:  # besoin d'au moins 4 beats pour estimer
+            try:
+                import bpm_source as _bs
+                bpm = _bs.get_bpm()
+                if bpm and bpm > 0:
+                    # Position basée sur le nombre de beats
+                    # beats / BPM = minutes écoulées
+                    beats_since_start = _beat_counter
+                    # Assume 4/4 time signature (standard)
+                    # Chaque beat = 60/BPM secondes
+                    pos_from_beats = (beats_since_start * 60) / bpm
+
+                    # Calibre avec SMTC si dispo (pour le début de chanson)
+                    if smtc_pos is not None and smtc_pos > 1.0:
+                        # SMTC nous donne la position absolue
+                        # On l'utilise pour calibrer le "zéro" des beats
+                        # Pour l'instant, simple : SMTC + interpolation
+                        elapsed = time.monotonic() - smtc_pos_t
+                        smtc_current = smtc_pos + elapsed
+
+                        # Si l'écart est trop grand (>3s), resync sur SMTC
+                        if _last_sync_pos is None or abs(smtc_current - pos_from_beats) > 3.0:
+                            # Resync : on ajuste le beat_counter pour matcher SMTC
+                            # beat_counter = pos * BPM / 60
+                            _beat_counter = int(smtc_current * bpm / 60)
+                            _last_sync_pos = smtc_current
+                            print(f"[LYRICS] beat-sync resync: {smtc_current:.1f}s -> {_beat_counter} beats")
+                            return smtc_current
+
+                    # Log activé beat-sync
+                    if int(now) % 30 == 0:
+                        print(f"[LYRICS] beat-sync actif: {pos_from_beats:.1f}s ({_beat_counter} beats @ {bpm:.0f}BPM)")
+
+                    return pos_from_beats
+            except Exception:
+                pass
+
+        # ── Fallback SMTC ─────────────────────────────────────────────────────
+        if smtc_pos is not None and smtc_pos > 1.0 and smtc_pos_t is not None:
+            # SMTC donne une vraie position → l'interpoler
+            elapsed = time.monotonic() - smtc_pos_t
+            return smtc_pos + elapsed
+
+        # ── Fallback timer local ──────────────────────────────────────────────
+        if song_start_t is not None:
+            # Timer local depuis que la chanson a été détectée
+            return time.monotonic() - song_start_t
+
+        return None
+
+    def _effective_pos() -> float | None:
+        """
+        Position effective = position brute corrigée par l'offset calibré.
+
+        sample = raw_pos - lyric_ts  (positif = lecture en avance sur la parole)
+        donc la position synchronisée sur les paroles = raw_pos - offset.
+        L'offset vient de l'auto-calibration ou du cache de la chanson.
+        """
+        raw = _raw_pos()
+        if raw is None:
+            return None
+        offset = _calibrated_offset
+        if offset is None:
+            return raw
+        return raw - offset
+
+    while _running:
+        now = time.monotonic()
+
+        if now - last_fetch_t >= FETCH_INTERVAL:
+            last_fetch_t = now
+
+            # ── YouTube extension (priorité absolue) ────────────────────────────────
+            if _youtube_artist and _youtube_title:
+                global _youtube_captions_tried  # Déclarer global ici pour toute la section
+
+                # Clé UNIQUE basée sur video_id pour détecter tout changement de vidéo
+                # (video_id change TOUJOURS la clé, même si artiste/titre identiques)
+                yt_key = f"yt:{_youtube_video_id or '?'}|{_youtube_artist.lower()}|{_youtube_title.lower()}"
+                # Re-fetch si nouvelle vidéo (video_id changé) OU si on a pas encore essayé les captions
+                need_refetch = (yt_key != last_key) or (
+                    _youtube_video_id and not _youtube_captions_tried and not _has_sync(lyrics)
+                )
+                if need_refetch:
+                    # Annule toute recherche en cours
+                    global _current_search_key
+                    _current_search_key = None  # ← Annule la recherche précédente
+                    _youtube_captions_tried = False  # Reset pour nouvelle vidéo
+
+                    # Nouvelle vidéo YouTube → fetch lyrics
+                    # Nettoie les noms YouTube (retire " - Topic - " etc.)
+                    clean_artist = _remove_topic_noise(_youtube_artist)
+                    print(f"[LYRICS] YouTube: {clean_artist} — {_youtube_title}")
+                    artist, title = _clean_artist(clean_artist), _youtube_title
+                    key = yt_key
+                    last_key = key
+                    fail_count = 0
+                    song_start_t = None  # YouTube gère sa propre position
+
+                    # AFFICHAGE IMMÉDIAT : Recherche en cours...
+                    with _lock:
+                        _state = {
+                            "artist": artist,
+                            "title": title,
+                            "lines": [],
+                            "current_idx": 0,
+                            "position": None,
+                            "has_sync": False,
+                            "loading": True,  # ← État de chargement
+                        }
+
+                    # Première écoute jamais ? (vérifier avant _fetch qui ajoute au cache)
+                    _first_listen_mode = _cache_key(artist, title) not in _get_disk_cache()
+
+                    # Captions YouTube (synchro) en priorité, sinon APIs
+                    lyrics = _load_lyrics_for(artist, title, _youtube_video_id)
+
+                    # Marquer qu'on a essayé les captions pour cette vidéo
+                    _youtube_captions_tried = True
+
+                    if lyrics:
+                        print(f"[LYRICS] {len(lyrics['synced'])} lignes")
+                    else:
+                        print("[LYRICS] introuvable")
+
+                    if _first_listen_mode and lyrics:
+                        print(f"[LYRICS] 🔊 première écoute — calibration active avec Kalman filter")
+
+                    # Reset beat tracking + calibration
+                    _beat_counter = 0
+                    _last_beat_seq = None
+                    _song_start_beats = None
+                    _last_sync_pos = None
+                    _calibration_active = False
+                    _calibration_samples = []
+                    _calibrated_offset, _calibration_done = _load_offset(artist, title)
+                    _next_sample_pos = 5.0  # Premier sample à 5s
+                    _kalman_init()  # Reset Kalman filter
+                # Même vidéo, rien à faire
+            else:
+                # ── Pas de YouTube → essai BPM/SMTC ────────────────────────────────────
+                r_from_bpm = None
+                try:
+                    import bpm_source as _bs
+                    bpm_artist, bpm_title = None, None
+                    if hasattr(_bs, '_get_now_playing'):
+                        result = _bs._get_now_playing()
+                        if result:
+                            bpm_artist, bpm_title = result
+                            # Nettoie le nom : retire " - Topic - " et autres bruits
+                            if bpm_artist and " - Topic - " in bpm_artist:
+                                bpm_artist = bpm_artist.replace(" - Topic - ", " ")
+                    if bpm_artist and bpm_title:
+                        bpm_artist = _remove_topic_noise(bpm_artist)
+                        r_from_bpm = (bpm_artist, bpm_title, None)
+                except Exception:
+                    pass
+
+                r = r_from_bpm or _winrt_fetch()
+
+                if r is None:
+                    fail_count += 1
+                    if fail_count == 1:
+                        print("[LYRICS] aucune session média détectée")
+                    elif fail_count % 5 == 0:
+                        print(f"[LYRICS] toujours rien ({fail_count}/{FAIL_CLEAR})")
+                    if fail_count >= FAIL_CLEAR:
+                        with _lock:
+                            _state = None
+                        last_key = None
+                        lyrics = None
+                        song_start_t = None
+                else:
+                    a, t, p = r
+                    fail_count = 0
+
+                    if p is not None and p > 0:
+                        if smtc_pos is not None and abs(p - smtc_pos) < 0.1:
+                            pos_frozen_count += 1
+                        else:
+                            pos_frozen_count = 0
+                            smtc_pos = p
+                            smtc_pos_t = now
+
+                    if not t:
+                        continue
+                    if " - " in t and not a:
+                        parts = [x.strip() for x in t.split(" - ", 1)]
+                        a, t = parts[0], parts[1]
+                    artist, title = _clean_artist(a), t
+                    key = f"{artist.lower()}|{title.lower()}"
+                    if key != last_key:
+                        last_key = key
+                        lyrics = None
+                        song_start_t = now
+                        smtc_pos = p if (p and p > 0) else None
+                        smtc_pos_t = now if smtc_pos else None
+                        pos_frozen_count = 0
+                        print(f"[LYRICS] ~ {artist} - {title}  [SMTC pos={p}]")
+
+                        # Annule toute recherche en cours
+                        _current_search_key = None  # ← Annule la recherche précédente
+
+                        # AFFICHAGE IMMÉDIAT : Recherche en cours...
+                        with _lock:
+                            _state = {
+                                "artist": artist,
+                                "title": title,
+                                "lines": [],
+                                "current_idx": 0,
+                                "position": None,
+                                "has_sync": False,
+                                "loading": True,  # ← État de chargement
+                            }
+
+                        # Première écoute jamais ? (vérifier avant _fetch_lyrics qui ajoute au cache)
+                        _first_listen_mode = _cache_key(artist, title) not in _get_disk_cache()
+
+                        # Si l'extension YouTube a un video_id pour CETTE chanson, on
+                        # tente d'abord les captions YouTube (synchro) même en SMTC.
+                        vid = None
+                        if (_youtube_video_id and _youtube_title
+                                and _youtube_title.lower() in title.lower()):
+                            vid = _youtube_video_id
+                        lyrics = _load_lyrics_for(artist, title, vid)
+                        if lyrics:
+                            print(f"[LYRICS] {len(lyrics['synced'])} lignes")
+                        else:
+                            print("[LYRICS] introuvable")
+
+                        if _first_listen_mode and lyrics:
+                            print(f"[LYRICS] 🔊 première écoute — calibration active avec Kalman filter")
+
+                        # Reset beat tracking + calibration
+                        _beat_counter = 0
+                        _last_beat_seq = None
+                        _song_start_beats = None
+                        _last_sync_pos = None
+                        _calibration_active = False
+                        _calibration_samples = []
+                        _calibrated_offset, _calibration_done = _load_offset(artist, title)
+                        _next_sample_pos = 5.0  # Premier sample à 5s
+                        _kalman_init()  # Reset Kalman filter
+                    else:
+                        if int(now) % 10 == 0:
+                            eff = _effective_pos()
+                            print(f"[LYRICS pos] SMTC={p}  eff={eff:.1f}s" if eff else f"[LYRICS pos] SMTC={p}  eff=None")
+
+        # ── Beat tracking depuis bpm_source ─────────────────────────────────────
+        try:
+            import bpm_source as _bs
+            beat_ts, beat_seq = _bs.get_beat_event()
+            if beat_seq is not None and beat_seq != _last_beat_seq:
+                # Nouveau beat détecté !
+                _last_beat_seq = beat_seq
+                _beat_counter += 1
+                _last_beat_ts = beat_ts
+
+                # Initialisation : premier beat de la chanson
+                if _song_start_beats is None:
+                    _song_start_beats = beat_seq
+                    _beat_counter = 0
+
+                # ── Auto-calibration offset avec Kalman filter ────────────────────────
+                if (_first_listen_mode and lyrics and lyrics["synced"]
+                        and lyrics["synced"][0][0] is not None):
+                    # On mesure sur la position BRUTE (sans offset déjà appliqué)
+                    raw_pos = _raw_pos()
+                    if raw_pos is not None and raw_pos >= _next_sample_pos:
+                        try:
+                            idx = _current_idx(lyrics["synced"], raw_pos)
+                            # Arrêter la calibration si on est à la fin des lyrics
+                            # (sinon l'offset mesuré drift car current_lyric_ts ne bouge plus)
+                            if idx >= len(lyrics["synced"]) - 2:
+                                _calibration_done = True
+                            current_lyric_ts = lyrics["synced"][idx][0]
+                            if current_lyric_ts is not None:
+                                sample = raw_pos - current_lyric_ts
+                                sample_ts = time.monotonic()
+                                _calibration_samples.append((sample_ts, sample))
+                                _calibration_active = True
+                                _next_sample_pos += _sample_interval
+                                n = len(_calibration_samples)
+
+                                # Mettre à jour le Kalman filter
+                                kalman_est = _kalman_update(sample)
+                                _calibrated_offset = kalman_est
+
+                                # Éliminer les outliers une seule fois (après 10 samples)
+                                # Pas de filtrage cyclique pour éviter l'effet boule de neige
+                                if n == 10 and not _calibration_done:
+                                    filtered = _remove_outliers_iqr(_calibration_samples)
+                                    if len(filtered) < len(_calibration_samples):
+                                        print(f"[LYRICS] 🧹 {len(_calibration_samples) - len(filtered)} outlier(s) éliminé(s) — IQR filtering unique")
+                                        # Reset Kalman avec les données propres
+                                        _kalman_init()
+                                        for ts, off in filtered:
+                                            _kalman_update(off)
+                                        _calibration_samples = filtered
+                                        kalman_est = _kf_state  # Recalculer après reset
+                                        n = len(_calibration_samples)  # Recalculer n après filtrage
+
+                                # Mettre à jour les stats
+                                _update_calibration_stats(_calibration_samples)
+
+                                print(f"[LYRICS] 📐 sample #{n} @{raw_pos:.0f}s → offset {sample:+.2f}s | KF: {kalman_est:+.2f}s | σ: {_calibration_stats['std']:.2f}s | conf: {_calibration_stats['confidence']:.0%}")
+
+                                # Mise à jour du cache à chaque sample (offset dynamique)
+                                cache = _get_disk_cache()
+                                ck = _cache_key(artist, title)
+                                if ck in cache:
+                                    cache[ck]["offset"] = kalman_est
+                                    _mark_cache_dirty()
+                                    _flush_cache_if_dirty()
+
+                                # Arrêt quand confiance > 90% et std < 0.3s
+                                if (_calibration_stats["confidence"] >= 0.9
+                                        and _calibration_stats["std"] is not None
+                                        and _calibration_stats["std"] < 0.3
+                                        and n >= 8):
+                                    _calibration_done = True
+                                    print(f"[LYRICS] ✅ calibration HAUTE PRÉCISION — offset final : {_calibrated_offset:+.2f}s (σ={_calibration_stats['std']:.2f}s, {_calibration_stats['outliers_removed']} outliers)")
+                        except Exception:
+                            pass
+        except Exception:
+            pass  # bpm_source pas dispo
+
+        # ── Mise à jour state ──────────────────────────────────────────────
+        if last_key is not None:
+            eff_pos = _effective_pos()
+            with _lock:
+                if lyrics and lyrics["synced"]:
+                    idx = _current_idx(lyrics["synced"], eff_pos) \
+                          if eff_pos is not None and lyrics["synced"][0][0] is not None else 0
+                    _state = {
+                        "artist":      artist,
+                        "title":       title,
+                        "lines":       lyrics["synced"],
+                        "current_idx": idx,
+                        "position":    eff_pos,
+                        "has_sync":    lyrics["synced"][0][0] is not None,
+                        "loading":     False,  # ← Chargement terminé
+                    }
+                else:
+                    _state = {
+                        "artist": artist, "title": title,
+                        "lines": [], "current_idx": 0, "position": None, "has_sync": False,
+                        "loading": False,  # ← Pas de lyrics trouvées
+                    }
+
+        # ── Cadence de la boucle ───────────────────────────────────────────
+        # Tour rapide pour un suivi fluide de la position; le fetch reste
+        # limité à FETCH_INTERVAL via le garde-fou en tête de boucle.
+        time.sleep(0.05)
+
+
+# ── API publique ────────────────────────────────────────────────────────────────
+def start():
+    """Démarre la boucle de fetch des paroles dans un thread daemon.
+
+    Idempotent : un second appel ne lance pas de thread supplémentaire.
+    """
+    global _running, _thread
+    if _running and _thread is not None and _thread.is_alive():
+        return
+    _running = True
+    _thread = threading.Thread(target=_run, name="lyrics_source", daemon=True)
+    _thread.start()
+
+
+def stop():
+    """Arrête la boucle de fetch et attend la fin du thread."""
+    global _running, _thread
+    _running = False
+    if _thread is not None:
+        _thread.join(timeout=2.0)
+        _thread = None
+
+
+def get_state() -> dict | None:
+    """Retourne l'état courant des paroles (copie), ou None si rien en lecture."""
+    with _lock:
+        if _state is None:
+            return None
+        return dict(_state)
+
+
+def resync():
+    """Force un re-fetch des paroles + recalibration (Ctrl+Shift+L).
+
+    Réinitialise les clés de recherche et l'état de calibration pour que la
+    boucle _run relance un fetch complet au prochain tour.
+    """
+    global _current_search_key, _youtube_captions_tried
+    global _calibration_active, _calibration_samples, _calibration_done
+    global _calibrated_offset, _next_sample_pos, _first_listen_mode
+    with _lock:
+        _current_search_key = None
+        _youtube_captions_tried = False
+        _calibration_active = False
+        _calibration_samples = []
+        _calibration_done = False
+        _calibrated_offset = None
+        _next_sample_pos = 5.0
+        _first_listen_mode = True
+    _kalman_init()
+    print("[LYRICS] 🔄 resync demandé — recherche + recalibration relancées")

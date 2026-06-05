@@ -1,0 +1,11 @@
+C:\Users\hedik\Documents\Claude\Projects\Box Screen\dashboard_rs\target\release\deps\socket2-ccf925196e5347ec.d: C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\lib.rs C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\sockaddr.rs C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\socket.rs C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\sockref.rs C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\sys\windows.rs
+
+C:\Users\hedik\Documents\Claude\Projects\Box Screen\dashboard_rs\target\release\deps\libsocket2-ccf925196e5347ec.rlib: C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\lib.rs C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\sockaddr.rs C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\socket.rs C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\sockref.rs C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\sys\windows.rs
+
+C:\Users\hedik\Documents\Claude\Projects\Box Screen\dashboard_rs\target\release\deps\libsocket2-ccf925196e5347ec.rmeta: C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\lib.rs C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\sockaddr.rs C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\socket.rs C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\sockref.rs C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\sys\windows.rs
+
+C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\lib.rs:
+C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\sockaddr.rs:
+C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\socket.rs:
+C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\sockref.rs:
+C:\Users\hedik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\socket2-0.6.4\src\sys\windows.rs:

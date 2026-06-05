@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg-info/
+
+# Données temporaires / sensibles
+last_state.json
+youtube_oauth.json
+youtube_quota_backoff.json
+lyrics_cache.json
+cookies.txt
+
+# Fichiers de test/temporaire
+_mount_probe*.txt
+*.bak
+
+# Screenshots / images de développement
+*.png
+*.jpg
+*.jpeg
+!assets/*.png
+!assets/*.jpg
+
+# OS
+.DS_Store
+Thumbs.db

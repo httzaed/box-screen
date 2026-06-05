@@ -1,30 +1,45 @@
 """
 Panel launcher — switche entre les modes avec Ctrl+Shift+Fleche
-  Ctrl+Shift+Droite : mode suivant
+  Ctrl+Shift+Droite : mode suivant   (ascii_vhs -> video -> image)
   Ctrl+Shift+Gauche : mode précédent
+  Ctrl+Shift+Haut   : HUD style suivant   (full -> terminal -> clock -> split -> tiles -> matrix)
+  Ctrl+Shift+Bas    : HUD style précédent
 
-Modes disponibles : ascii_vhs, video, image
+Modes    (contenu/fond) : ascii_vhs, video, image
+HUD styles (rendu HUD)  : full, terminal, clock, split, tiles, matrix
 """
 import time, math, random, importlib, threading, io, struct
+try:
+    import keyboard as _keyboard
+    _KEYBOARD_LIB = True
+except ImportError:
+    _KEYBOARD_LIB = False
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-from pynput import keyboard
 
 import sys as _sys
 import json as _json
 
 import render
+import render_tiles
+import render_matrix
+import render_audio_viz
 from panel import Panel, WIDTH, HEIGHT, _image_to_jpeg, _send_frame
+import control_server
 
-# ── LED wave (projet ~/LEDs) ────────────────────────────────────────────────
+# ── LED (wave + fans) ───────────────────────────────────────────────────────
 _sys.path.insert(0, str(Path(__file__).parent.parent / "LEDs"))
 try:
-    import led_wave as _led
+    import led_fans as _led   # gère vague case + rotation fans
     _LED = True
 except ImportError:
-    _led = None
-    _LED = False
-    print("[LED] led_wave introuvable — LEDs désactivées")
+    try:
+        import led_wave as _led   # fallback sans fans
+        _LED = True
+    except ImportError:
+        _led = None
+        _LED = False
+        print("[LED] led_fans/led_wave introuvables — LEDs désactivées")
 
 # ── Config ─────────────────────────────────────────────────────────────────
 _HERE       = Path(__file__).parent
@@ -32,10 +47,13 @@ VIDEO_FILE  = str(next(_HERE.glob("*.mp4"),  _HERE / "video.mp4"))
 IMAGE_FILE  = str(next(_HERE.glob("*.png"),  _HERE / "image.png"))
 ASCII_FILE  = _HERE / "ascii_bg.txt"
 
-MODES       = ["ascii_vhs", "video", "image"]
+MODES       = ["ascii_vhs", "video", "image", "audio", "blank"]
 FPS_VIDEO   = 25
 FPS_ASCII   = 14
 FPS_IMAGE   = 1
+
+# HUD styles : les 4 layouts render.py + tiles + matrix + audio_viz (renderers autonomes)
+HUD_STYLES  = ["full", "terminal", "clock", "split", "tiles", "matrix", "lyrics", "audio_viz", "blank"]
 
 # ── ASCII VHS config ───────────────────────────────────────────────────────
 ASCII_START = (221,   0, 255)   # violet/rose vif — identique à st_wave.py
@@ -46,9 +64,10 @@ INTENSITY   = 0.4
 
 # ── LED couleurs par mode ───────────────────────────────────────────────────
 _LED_COLORS = {
-    "ascii_vhs": (ASCII_START, ASCII_END),           # violet → orange comme l'écran
-    "image":     ((0, 162, 216), (0, 216, 54)),      # cyan ciel → vert jungle
-    "video":     ((255, 20, 100), (50, 100, 220)),      # rose vif → bleu acier
+    "ascii_vhs": (ASCII_START, ASCII_END),         # violet -> orange
+    "image":     ((0, 162, 216), (0, 216, 54)),    # cyan ciel -> vert jungle
+    "video":     ((255, 20, 100), (50, 100, 220)), # rose vif -> bleu acier
+    "blank":     ((0, 0, 0), (0, 0, 0)),           # LEDs éteintes
 }
 
 def _palette_colors():
@@ -61,8 +80,29 @@ def _palette_colors():
     except Exception:
         return (0xFF, 0x35, 0x00), (0xDD, 0x00, 0xFF)
 
+# ── Persistence mode/hud ───────────────────────────────────────────────────
+_STATE_FILE = _HERE / "last_state.json"
+
+def _load_state():
+    try:
+        d = _json.loads(_STATE_FILE.read_text())
+        mi = MODES.index(d["mode"]) if d.get("mode") in MODES else 0
+        hi = HUD_STYLES.index(d["hud"]) if d.get("hud") in HUD_STYLES else 0
+        return mi, hi
+    except Exception:
+        return 0, 0
+
+def _save_state():
+    try:
+        _STATE_FILE.write_text(_json.dumps({
+            "mode": MODES[_mode_idx % len(MODES)],
+            "hud":  HUD_STYLES[_hud_idx % len(HUD_STYLES)],
+        }))
+    except Exception:
+        pass
+
 # ── State ──────────────────────────────────────────────────────────────────
-_mode_idx   = 0
+_mode_idx, _hud_idx = _load_state()
 _mode_lock  = threading.Lock()
 _stop_event = threading.Event()
 _panel      = None
@@ -86,9 +126,22 @@ def _fit_crop(img: Image.Image) -> Image.Image:
     return img.crop((x, y, x + WIDTH, y + HEIGHT))
 
 def _send(img: Image.Image):
-    render.background_override = img
-    frame = render.build_frame()
-    _panel.send_image(frame, fit=False)
+    """Envoie une frame en appliquant le HUD actif."""
+    hud = HUD_STYLES[_hud_idx]
+    if hud == "tiles":
+        _panel.send_image(render_tiles.build_frame(bg=img), fit=False)
+    elif hud == "matrix":
+        _panel.send_image(render_matrix.build_frame(bg=img), fit=False)
+    elif hud == "audio_viz":
+        _panel.send_image(render_audio_viz.build_frame(bg=img), fit=False)
+    elif hud == "blank":
+        render.LAYOUT = "full"
+        render.background_override = Image.new("RGB", (WIDTH, HEIGHT), (0, 0, 0))
+        _panel.send_image(render.build_frame(), fit=False)
+    else:
+        render.LAYOUT = hud
+        render.background_override = img
+        _panel.send_image(render.build_frame(), fit=False)
 
 def _mono(size):
     candidates = [
@@ -214,28 +267,115 @@ def _video_loop(stop):
 # ══════════════════════════════════════════════════════════════════════════
 
 def _image_loop(stop):
-    from panel import _image_to_jpeg, _send_frame
     import datetime as _dt
 
-    bg          = _fit_crop(Image.open(IMAGE_FILE).convert("RGB"))
+    bg       = _fit_crop(Image.open(IMAGE_FILE).convert("RGB"))
+    last_hud = None
+    last_sec = -1
     cached_jpeg = None
-    last_sec    = -1
 
     while not stop.is_set():
         t0  = time.time()
         now = _dt.datetime.now()
+        hud = HUD_STYLES[_hud_idx]
 
-        if now.second != last_sec:
+        # audio_viz et lyrics: toujours refresh (real-time)
+        # autres: refresh si seconde écoulée OU si le HUD a changé
+        if hud in ("audio_viz", "lyrics") or now.second != last_sec or hud != last_hud:
             last_sec = now.second
-            # Rebuild frame avec l'heure mise à jour
-            render.background_override = bg
-            frame_img   = render.build_frame()
-            cached_jpeg = _image_to_jpeg(frame_img)
+            last_hud = hud
+            if hud == "tiles":
+                cached_jpeg = _image_to_jpeg(render_tiles.build_frame(bg=bg))
+            elif hud == "matrix":
+                cached_jpeg = _image_to_jpeg(render_matrix.build_frame(bg=bg))
+            elif hud == "audio_viz":
+                # Real-time, no cache
+                cached_jpeg = None
+            elif hud == "blank":
+                render.LAYOUT = "full"
+                render.background_override = Image.new("RGB", (WIDTH, HEIGHT), (0, 0, 0))
+                cached_jpeg = _image_to_jpeg(render.build_frame())
+            else:
+                render.LAYOUT = hud
+                render.background_override = bg
+                cached_jpeg = _image_to_jpeg(render.build_frame())
 
-        if cached_jpeg:
+        # audio_viz: toujours envoyer une frame fraîche
+        if hud == "audio_viz":
+            _panel.send_image(render_audio_viz.build_frame(bg=bg), fit=False)
+        elif cached_jpeg:
             _send_frame(_panel._ep_out, _panel._ep_in, cached_jpeg)
 
-        time.sleep(max(0, 1/FPS_IMAGE - (time.time()-t0)))
+        # fps adaptatif selon le mode
+        if hud in ("audio_viz", "lyrics"):
+            target_fps = 30
+        else:
+            target_fps = FPS_IMAGE
+        time.sleep(max(0, 1/target_fps - (time.time()-t0)))
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Mode : Blank (écran noir + HUD uniquement)
+# ══════════════════════════════════════════════════════════════════════════
+
+_BLACK_BG = None  # initialisé au premier appel pour avoir WIDTH/HEIGHT dispo
+
+def _blank_loop(stop):
+    import datetime as _dt
+    global _BLACK_BG
+    if _BLACK_BG is None:
+        _BLACK_BG = Image.new("RGB", (WIDTH, HEIGHT), (0, 0, 0))
+
+    last_hud = None
+    last_sec = -1
+    cached_jpeg = None
+
+    while not stop.is_set():
+        t0  = time.time()
+        now = _dt.datetime.now()
+        hud = HUD_STYLES[_hud_idx]
+
+        # audio_viz et lyrics: toujours refresh (real-time)
+        # autres: refresh si seconde écoulée OU si le HUD a changé
+        if hud in ("audio_viz", "lyrics") or now.second != last_sec or hud != last_hud:
+            last_sec = now.second
+            last_hud = hud
+            if hud == "tiles":
+                cached_jpeg = _image_to_jpeg(render_tiles.build_frame(bg=_BLACK_BG))
+            elif hud == "matrix":
+                cached_jpeg = _image_to_jpeg(render_matrix.build_frame(bg=_BLACK_BG))
+            elif hud == "audio_viz":
+                # Real-time, no cache
+                cached_jpeg = None
+            else:
+                render.LAYOUT = "full" if hud == "blank" else hud
+                render.background_override = _BLACK_BG
+                cached_jpeg = _image_to_jpeg(render.build_frame())
+
+        # audio_viz: toujours envoyer une frame fraîche
+        if hud == "audio_viz":
+            _panel.send_image(render_audio_viz.build_frame(bg=_BLACK_BG), fit=False)
+        elif cached_jpeg:
+            _send_frame(_panel._ep_out, _panel._ep_in, cached_jpeg)
+
+        # fps adaptatif selon le mode
+        if hud in ("audio_viz", "lyrics"):
+            target_fps = 30
+        else:
+            target_fps = FPS_IMAGE
+        time.sleep(max(0, 1/target_fps - (time.time()-t0)))
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Mode : Audio Visualizer (direct, no HUD overlay)
+# ══════════════════════════════════════════════════════════════════════════
+
+def _audio_loop(stop):
+    """Pure audio visualizer mode - no background, just the 4 panels."""
+    while not stop.is_set():
+        t0 = time.time()
+        _panel.send_image(render_audio_viz.build_frame(), fit=False)
+        time.sleep(max(0, 1/30 - (time.time()-t0)))  # 30 FPS
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -246,12 +386,8 @@ MODE_FNS = {
     "ascii_vhs": _ascii_vhs_loop,
     "video":     _video_loop,
     "image":     _image_loop,
-}
-
-MODE_LAYOUTS = {
-    "ascii_vhs": "terminal",
-    "video":     "full",
-    "image":     "clock",
+    "audio":     _audio_loop,
+    "blank":     _blank_loop,
 }
 
 _current_stop   = None
@@ -271,7 +407,6 @@ def _start_mode(idx):
         _led_thread.join(timeout=2)
 
     name = MODES[idx % len(MODES)]
-    render.LAYOUT = MODE_LAYOUTS[name]
     stop = threading.Event()
     t    = threading.Thread(target=MODE_FNS[name], args=(stop,), daemon=True)
     _current_stop   = stop
@@ -279,6 +414,7 @@ def _start_mode(idx):
     t.start()
 
     # Démarrer le thread LED correspondant
+    print(f"[LED] _LED={_LED}")
     if _LED:
         fixed = _LED_COLORS[name]
         get_c = (lambda: fixed) if fixed else _palette_colors
@@ -287,32 +423,53 @@ def _start_mode(idx):
         _led_stop   = ls
         _led_thread = lt
         lt.start()
+        print(f"[LED] thread démarré pour {name}")
 
-    print(f"Mode : {name}")
+    print(f"  >  mode -> {name}")
 
 def _switch(delta):
     global _mode_idx
     with _mode_lock:
         _mode_idx = (_mode_idx + delta) % len(MODES)
         _start_mode(_mode_idx)
+        _save_state()
+
+def _switch_hud(delta):
+    global _hud_idx
+    _hud_idx = (_hud_idx + delta) % len(HUD_STYLES)
+    # Amorce les compteurs si on arrive sur tiles/matrix
+    hud = HUD_STYLES[_hud_idx]
+    if hud == "tiles":
+        render_tiles._rates()
+    elif hud == "matrix":
+        render_matrix._rates()
+    _save_state()
+    print(f"  >  hud  -> {hud}")
+
+
+def _resync_lyrics():
+    """Force resync des lyrics via Ctrl+Shift+L"""
+    try:
+        import lyrics_source
+        lyrics_source.resync()
+    except Exception as e:
+        print(f"[LYRICS] Erreur resync: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════
 # Hotkeys globaux
 # ══════════════════════════════════════════════════════════════════════════
 
-_pressed = set()
-
-def _on_press(key):
-    _pressed.add(key)
-    ctrl  = keyboard.Key.ctrl_l  in _pressed or keyboard.Key.ctrl_r  in _pressed
-    shift = keyboard.Key.shift_l in _pressed or keyboard.Key.shift_r in _pressed
-    if ctrl and shift:
-        if key == keyboard.Key.right: _switch(+1)
-        if key == keyboard.Key.left:  _switch(-1)
-
-def _on_release(key):
-    _pressed.discard(key)
+def _setup_hotkeys():
+    if not _KEYBOARD_LIB:
+        print("[Hotkeys] lib 'keyboard' introuvable — pip install keyboard")
+        return
+    _keyboard.add_hotkey("ctrl+shift+right", lambda: threading.Thread(target=_switch,     args=(+1,), daemon=True).start(), suppress=False)
+    _keyboard.add_hotkey("ctrl+shift+left",  lambda: threading.Thread(target=_switch,     args=(-1,), daemon=True).start(), suppress=False)
+    _keyboard.add_hotkey("ctrl+shift+up",    lambda: threading.Thread(target=_switch_hud, args=(+1,), daemon=True).start(), suppress=False)
+    _keyboard.add_hotkey("ctrl+shift+down",  lambda: threading.Thread(target=_switch_hud, args=(-1,), daemon=True).start(), suppress=False)
+    _keyboard.add_hotkey("ctrl+shift+l",     _resync_lyrics, suppress=False)
+    print("[Hotkeys] OK (ctrl+shift+left/right  modes  |  ctrl+shift+up/down  HUD style  |  ctrl+shift+l  resync lyrics)")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -323,30 +480,84 @@ if __name__ == "__main__":
     print("Démarrage du panel...")
     _panel = Panel()
     render.psutil.cpu_percent(interval=None)
+    render_tiles._rates()
+    render_matrix._rates()
 
     # Hot reload render.py
     def _watch_render():
-        from watchdog.observers import Observer
-        from watchdog.events import FileSystemEventHandler
-        class R(FileSystemEventHandler):
-            def on_modified(self, e):
-                if Path(e.src_path).name == "render.py":
-                    try: importlib.reload(render); print("render.py rechargé")
-                    except Exception as ex: print(f"Erreur: {ex}")
-        obs = Observer()
-        obs.schedule(R(), str(Path(__file__).parent), recursive=False)
-        obs.start()
+        try:
+            from watchdog.observers import Observer
+            from watchdog.events import FileSystemEventHandler
+            class R(FileSystemEventHandler):
+                def on_modified(self, e):
+                    if Path(e.src_path).name == "render.py":
+                        try: importlib.reload(render); print("render.py rechargé")
+                        except Exception as ex: print(f"Erreur: {ex}")
+            obs = Observer()
+            obs.schedule(R(), str(Path(__file__).parent), recursive=False)
+            obs.start()
+        except ImportError:
+            pass
     threading.Thread(target=_watch_render, daemon=True).start()
 
     _start_mode(_mode_idx)
 
-    listener = keyboard.Listener(on_press=_on_press, on_release=_on_release)
-    listener.start()
+    _setup_hotkeys()
 
-    print(f"Mode actuel : {MODES[_mode_idx]}")
-    print("Ctrl+Shift+→  mode suivant")
-    print("Ctrl+Shift+←  mode précédent")
-    print("Ctrl+C pour quitter\n")
+    # ── Dashboard (HTTP + app native) ──────────────────────────────────────
+    import bpm_source as _bpm
+    _bpm.start()
+
+    try:
+        import lyrics_source as _lyrics
+        _lyrics.start()
+    except ImportError:
+        print("[Lyrics] lyrics_source introuvable — mode lyrics désactivé")
+        _lyrics = None
+
+    # Audio visualization uses bpm_source data (already started above)
+
+    def _get_state():
+        ts, seq = _bpm.get_beat_event()
+        return {
+            "mode":     MODES[_mode_idx],
+            "hud":      HUD_STYLES[_hud_idx],
+            "bpm":      _bpm.get_bpm(),
+            "level":    _bpm.get_level(),
+            "beat_seq": seq,
+        }
+    _set_led_fn = None
+    if _LED:
+        try:
+            import led_fans as _lf_mod
+            from control_server import _apply_led
+            _set_led_fn = lambda zone, val: _apply_led(_lf_mod, zone, val)
+        except Exception:
+            pass
+    control_server.start(_switch, _switch_hud, _get_state, _set_led_fn)
+
+    W = 44
+    print()
+    print("+" + "-"*W + "+")
+    print(f"|  BOX SCREEN" + " "*(W-12) + "|")
+    print("+" + "-"*W + "+")
+    print(f"|  mode  : {MODES[_mode_idx]:<{W-10}}|")
+    print(f"|  hud   : {HUD_STYLES[_hud_idx]:<{W-10}}|")
+    print(f"|  dashboard : http://localhost:7420{' '*(W-35)}|")
+    print("+" + "-"*W + "+")
+    print(f"|  ctrl+shift+left/right  -> mode{' '*(W-28)}|")
+    print(f"|  ctrl+shift+up/down    -> hud style{' '*(W-32)}|")
+    print(f"|  ctrl+c                -> quit{' '*(W-26)}|")
+    print("+" + "-"*W + "+")
+    print()
+
+    # App native Dear PyGui (--gui pour l'activer)
+    try:
+        if "--gui" in _sys.argv:
+            import dashboard_app
+            dashboard_app.run_embedded(_switch, _switch_hud, _get_state, _set_led_fn if _LED else None)
+    except ImportError:
+        pass
 
     try:
         while True:
@@ -357,5 +568,4 @@ if __name__ == "__main__":
         if _current_stop: _current_stop.set()
         if _led_stop:     _led_stop.set()
         if _LED:          _led.shutdown()
-        listener.stop()
         _panel.close()

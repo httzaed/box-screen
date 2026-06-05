@@ -11,7 +11,7 @@ import signal
 C1 = (0xDD, 0x00, 0xFF)  # violet/rose vif
 C2 = (0xFF, 0x28, 0x00)  # orange-rouge pétant
 
-SPEED = 0.03   # secondes entre frames (~33 fps)
+SPEED = 0.0345   # secondes entre frames (~29 fps, -15% vitesse)
 BAND  = 18     # largeur d'une bande en LEDs
 
 # ── se connecter au serveur OpenRGB déjà lancé (via OpenRGB.desktop autostart) ─
