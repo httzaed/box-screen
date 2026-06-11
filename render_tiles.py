@@ -67,7 +67,7 @@ _LED_RGB = {
     "teal":   (  0, 210, 150),
     "green":  (  0, 212, 130),
     "yellow": (255, 200,   0),
-    "orange": (255,  85,   0),
+    "orange": (255,  40,   0),
     "red":    (255,   0,   0),
     "pink":   (255,  20, 100),
     "white":  (220, 220, 220),
@@ -159,26 +159,44 @@ def _ema(key, value, alpha=0.25):
 
 
 def _rates():
-    """Débits réseau & disque (MB/s) calculés sur l'intervalle réel."""
-    global _prev_net, _prev_disk
-    now = time.time()
-    net = psutil.net_io_counters()
-    dn = up = 0.0
-    if _prev_net:
-        dt = max(1e-3, now - _prev_net[2])
-        dn = (net.bytes_recv - _prev_net[0]) / dt / 1e6
-        up = (net.bytes_sent - _prev_net[1]) / dt / 1e6
-    _prev_net = (net.bytes_recv, net.bytes_sent, now)
+    """Débits réseau & disque (MB/s) calculés sur l'intervalle réel.
 
-    rd = wr = 0.0
-    dio = psutil.disk_io_counters()
-    if dio and _prev_disk:
-        dt = max(1e-3, now - _prev_disk[2])
-        rd = (dio.read_bytes - _prev_disk[0]) / dt / 1e6
-        wr = (dio.write_bytes - _prev_disk[1]) / dt / 1e6
-    if dio:
-        _prev_disk = (dio.read_bytes, dio.write_bytes, now)
-    return max(0, dn), max(0, up), max(0, rd), max(0, wr)
+    Optimisation: cache les valeurs expensive (net_io_counters, disk_io_counters)
+    pendant 500 ms car ces appels coûtent ~6.5 ms sur Windows.
+    """
+    global _prev_net, _prev_disk
+
+    now = time.time()
+
+    # Cache avec expiration
+    cache_key = "_rates_cache"
+    if cache_key not in globals():
+        globals()[cache_key] = {"values": (0, 0, 0, 0), "time": 0}
+    cache = globals()[cache_key]
+
+    # Mettre à jour toutes les 500 ms (2 frames à 4 Hz)
+    if now - cache["time"] >= 0.5:
+        net = psutil.net_io_counters()
+        dn = up = 0.0
+        if _prev_net:
+            dt = max(1e-3, now - _prev_net[2])
+            dn = (net.bytes_recv - _prev_net[0]) / dt / 1e6
+            up = (net.bytes_sent - _prev_net[1]) / dt / 1e6
+        _prev_net = (net.bytes_recv, net.bytes_sent, now)
+
+        rd = wr = 0.0
+        dio = psutil.disk_io_counters()
+        if dio and _prev_disk:
+            dt = max(1e-3, now - _prev_disk[2])
+            rd = (dio.read_bytes - _prev_disk[0]) / dt / 1e6
+            wr = (dio.write_bytes - _prev_disk[1]) / dt / 1e6
+        if dio:
+            _prev_disk = (dio.read_bytes, dio.write_bytes, now)
+
+        cache["values"] = (max(0, dn), max(0, up), max(0, rd), max(0, wr))
+        cache["time"] = now
+
+    return cache["values"]
 
 
 def _status_color(pct):
