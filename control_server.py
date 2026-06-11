@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import json, threading, urllib.parse
 
 PORT = 7420
-_switch = _switch_hud = _get_state = _set_led = None
+_switch = _switch_hud = _get_state = _set_led = _auto_override = None
 
 _COLORS      = ["violet","cyan","blue","teal","green","yellow","orange","red","pink","white"]
 _CASE_MODES  = ['off', 'static', 'wave', 'beat', 'beat_pulse', 'gradient', 'rainbow', 'comet', 'breathe', 'spin', 'dual']
@@ -57,20 +57,20 @@ class _Handler(BaseHTTPRequestHandler):
 def _do_mode(val):
     state=_get_state() if _get_state else {}
     cur=state.get("mode",_MODES[0])
-    if val=="next": _switch(+1)
-    elif val=="prev": _switch(-1)
+    if val=="next": _switch(+1); _notify_auto_override()
+    elif val=="prev": _switch(-1); _notify_auto_override()
     elif val in _MODES:
         delta=_MODES.index(val)-(_MODES.index(cur) if cur in _MODES else 0)
-        if delta: _switch(delta)
+        if delta: _switch(delta); _notify_auto_override()
 
 def _do_hud(val):
     state=_get_state() if _get_state else {}
     cur=state.get("hud",_HUD_STYLES[0])
-    if val=="next": _switch_hud(+1)
-    elif val=="prev": _switch_hud(-1)
+    if val=="next": _switch_hud(+1); _notify_auto_override()
+    elif val=="prev": _switch_hud(-1); _notify_auto_override()
     elif val in _HUD_STYLES:
         delta=_HUD_STYLES.index(val)-(_HUD_STYLES.index(cur) if cur in _HUD_STYLES else 0)
-        if delta: _switch_hud(delta)
+        if delta: _switch_hud(delta); _notify_auto_override()
 
 def _do_led(zone,val):
     if _set_led: _set_led(zone,val)
@@ -146,10 +146,22 @@ def _status_json():
         except Exception: pass
     return s
 
-def start(switch_fn=None,switch_hud_fn=None,get_state_fn=None,set_led_fn=None):
-    global _switch,_switch_hud,_get_state,_set_led
+def _notify_auto_override():
+    """Notifie auto_mode qu'un override manuel a eu lieu."""
+    if _auto_override:
+        try:
+            state = _get_state() if _get_state else {}
+            mode = state.get("mode")
+            hud = state.get("hud")
+            _auto_override(mode=mode, hud=hud)
+        except Exception as e:
+            print(f"[AUTO OVERRIDE] Erreur: {e}")
+
+def start(switch_fn=None,switch_hud_fn=None,get_state_fn=None,set_led_fn=None,auto_override_fn=None):
+    global _switch,_switch_hud,_get_state,_set_led,_auto_override
     _switch=switch_fn; _switch_hud=switch_hud_fn
     _get_state=get_state_fn; _set_led=set_led_fn
+    _auto_override=auto_override_fn
     import threading
     t=threading.Thread(target=lambda:HTTPServer(("",PORT),_Handler).serve_forever(),daemon=True)
     t.start()

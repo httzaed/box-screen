@@ -7,6 +7,8 @@ Panel launcher — switche entre les modes avec Ctrl+Shift+Fleche
 
 Modes    (contenu/fond) : ascii_vhs, video, image
 HUD styles (rendu HUD)  : full, terminal, clock, split, tiles, matrix
+
+  --auto  : Mode auto-intelligent (détecte vidéo/musique/lyrics et adapte l'affichage)
 """
 import time, math, random, importlib, threading, io, struct
 try:
@@ -108,6 +110,15 @@ _stop_event = threading.Event()
 _panel      = None
 _led_stop   = None
 _led_thread = None
+
+# ── Auto mode ───────────────────────────────────────────────────────────────
+_auto_mode      = False
+_auto_enabled   = False  # True quand --auto est passé
+_last_context   = None
+_auto_check_interval = 2.0
+_last_auto_check = 0.0
+_last_applied_mode = None   # Pour éviter de reapply le même mode
+_last_applied_led = None    # Pour éviter de reapply la même config LED
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -347,14 +358,22 @@ def _blank_loop(stop):
             elif hud == "audio_viz":
                 # Real-time, no cache
                 cached_jpeg = None
+            elif hud == "lyrics":
+                # Real-time, no cache - lyrics changent en continu
+                cached_jpeg = None
             else:
                 render.LAYOUT = "full" if hud == "blank" else hud
                 render.background_override = _BLACK_BG
                 cached_jpeg = _image_to_jpeg(render.build_frame())
 
-        # audio_viz: toujours envoyer une frame fraîche
+        # audio_viz et lyrics: toujours envoyer une frame fraîche (real-time)
         if hud == "audio_viz":
             _panel.send_image(render_audio_viz.build_frame(bg=_BLACK_BG), fit=False)
+        elif hud == "lyrics":
+            # Lyrics: génère la frame en temps réel avec fond noir
+            render.LAYOUT = "lyrics"
+            render.background_override = _BLACK_BG
+            _panel.send_image(render.build_frame(), fit=False)
         elif cached_jpeg:
             _send_frame(_panel._ep_out, _panel._ep_in, cached_jpeg)
 
@@ -455,6 +474,104 @@ def _resync_lyrics():
     except Exception as e:
         print(f"[LYRICS] Erreur resync: {e}")
 
+def _resync_youtube():
+    """Force resync via YouTube timecode via Ctrl+Shift+R"""
+    try:
+        import lyrics_source
+        # Réinitialise les données YouTube pour forcer une nouvelle détection
+        lyrics_source.resync()
+        print("[LYRICS] 🔄 YouTube timecode resync demandé")
+    except Exception as e:
+        print(f"[LYRICS] Erreur YouTube resync: {e}")
+
+
+# ── Auto mode functions ────────────────────────────────────────────────────
+def _apply_auto_mode(mode_name, hud_name, led_cfg):
+    """Applique le mode, HUD et config LED déterminés par l'auto-mode."""
+    global _mode_idx, _hud_idx
+
+    print(f"[AUTO DEBUG] apply_auto_mode: mode={mode_name}, hud={hud_name}")
+
+    # Appliquer le mode
+    if mode_name in MODES:
+        target_idx = MODES.index(mode_name)
+        if target_idx != _mode_idx:
+            with _mode_lock:
+                _mode_idx = target_idx
+                _start_mode(_mode_idx)
+            print(f"[AUTO] Mode → {mode_name}")
+        else:
+            print(f"[AUTO DEBUG] Mode {mode_name} déjà actif (idx={target_idx})")
+    else:
+        print(f"[AUTO DEBUG] Mode {mode_name} PAS dans MODES: {MODES}")
+
+    # Appliquer le HUD
+    if hud_name and hud_name in HUD_STYLES:
+        target_idx = HUD_STYLES.index(hud_name)
+        if target_idx != _hud_idx:
+            _hud_idx = target_idx
+            if hud_name == "tiles":
+                render_tiles._rates()
+            elif hud_name == "matrix":
+                render_matrix._rates()
+            print(f"[AUTO] HUD → {hud_name} (idx={target_idx})")
+        else:
+            print(f"[AUTO DEBUG] HUD {hud_name} déjà actif (idx={target_idx})")
+    else:
+        print(f"[AUTO DEBUG] HUD {hud_name} PAS dans HUD_STYLES: {HUD_STYLES}")
+
+    # Appliquer la config LED
+    if _LED and led_cfg:
+        try:
+            import led_fans as _lf_mod
+            from control_server import _apply_led
+
+            if "case" in led_cfg:
+                _apply_led(_lf_mod, "case_mode", led_cfg["case"])
+            if "fans" in led_cfg:
+                _apply_led(_lf_mod, "fan_mode", led_cfg["fans"])
+            print(f"[AUTO] LED → case={led_cfg.get('case', '?')}, fans={led_cfg.get('fans', '?')}")
+        except Exception as e:
+            print(f"[AUTO] Erreur LED: {e}")
+
+
+def _auto_tick():
+    """Tick d'auto-mode : détecte contexte et applique les changements."""
+    global _last_context, _last_auto_check, _last_applied_mode, _last_applied_led
+
+    try:
+        import auto_mode
+        context = auto_mode.detect_context()
+        now = time.monotonic()
+
+        # Initialisation ou changement drastique (musique s'arrête)
+        if _last_context is None or auto_mode.should_reevaluate(_last_context, context):
+            (mode, hud), led_cfg = auto_mode.determine_mode(context)
+            # N'appliquer que si quelque chose a changé
+            current_state = (mode, hud, led_cfg.get("case"), led_cfg.get("fans"))
+            if current_state != _last_applied_mode:
+                _apply_auto_mode(mode, hud, led_cfg)
+                _last_applied_mode = current_state
+            _last_context = context
+            _last_auto_check = now
+            return
+
+        # Vérification périodique si musique active (pour lyrics)
+        if context.get("has_music") and (now - _last_auto_check > _auto_check_interval):
+            if context.get("has_lyrics") != _last_context.get("has_lyrics"):
+                (mode, hud), led_cfg = auto_mode.determine_mode(context)
+                # N'appliquer que si quelque chose a changé
+                current_state = (mode, hud, led_cfg.get("case"), led_cfg.get("fans"))
+                if current_state != _last_applied_mode:
+                    _apply_auto_mode(mode, hud, led_cfg)
+                    _last_applied_mode = current_state
+                    print(f"[AUTO] Lyrics changed: {context.get('has_lyrics')}")
+            _last_context = context
+            _last_auto_check = now
+
+    except Exception as e:
+        print(f"[AUTO] Error: {e}")
+
 
 # ══════════════════════════════════════════════════════════════════════════
 # Hotkeys globaux
@@ -469,7 +586,8 @@ def _setup_hotkeys():
     _keyboard.add_hotkey("ctrl+shift+up",    lambda: threading.Thread(target=_switch_hud, args=(+1,), daemon=True).start(), suppress=False)
     _keyboard.add_hotkey("ctrl+shift+down",  lambda: threading.Thread(target=_switch_hud, args=(-1,), daemon=True).start(), suppress=False)
     _keyboard.add_hotkey("ctrl+shift+l",     _resync_lyrics, suppress=False)
-    print("[Hotkeys] OK (ctrl+shift+left/right  modes  |  ctrl+shift+up/down  HUD style  |  ctrl+shift+l  resync lyrics)")
+    _keyboard.add_hotkey("ctrl+shift+r",     _resync_youtube, suppress=False)
+    print("[Hotkeys] OK (ctrl+shift+left/right  modes  |  ctrl+shift+up/down  HUD style  |  ctrl+shift+l  resync lyrics  |  ctrl+shift+r  YouTube timecode resync)")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -477,6 +595,13 @@ def _setup_hotkeys():
 # ══════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
+    # Check for --auto flag
+    if "--auto" in _sys.argv:
+        _auto_enabled = True
+        print("[AUTO] Mode auto activé")
+        # Bypass state loading for auto mode
+        _mode_idx, _hud_idx = 0, 0  # Start at first mode, will be overridden by auto
+
     print("Démarrage du panel...")
     _panel = Panel()
     render.psutil.cpu_percent(interval=None)
@@ -534,14 +659,23 @@ if __name__ == "__main__":
             _set_led_fn = lambda zone, val: _apply_led(_lf_mod, zone, val)
         except Exception:
             pass
-    control_server.start(_switch, _switch_hud, _get_state, _set_led_fn)
+    # Callback d'override pour auto_mode
+    def _auto_override_cb(mode=None, hud=None):
+        try:
+            import auto_mode
+            auto_mode.set_manual_override(mode=mode, hud=hud)
+        except Exception as e:
+            print(f"[AUTO] Erreur callback override: {e}")
+
+    control_server.start(_switch, _switch_hud, _get_state, _set_led_fn, _auto_override_cb)
 
     W = 44
     print()
     print("+" + "-"*W + "+")
     print(f"|  BOX SCREEN" + " "*(W-12) + "|")
     print("+" + "-"*W + "+")
-    print(f"|  mode  : {MODES[_mode_idx]:<{W-10}}|")
+    auto_label = "AUTO" if _auto_enabled else "MANUAL"
+    print(f"|  mode  : {auto_label + ' / ' + MODES[_mode_idx]:<{W-10}}|")
     print(f"|  hud   : {HUD_STYLES[_hud_idx]:<{W-10}}|")
     print(f"|  dashboard : http://localhost:7420{' '*(W-35)}|")
     print("+" + "-"*W + "+")
@@ -561,6 +695,10 @@ if __name__ == "__main__":
 
     try:
         while True:
+            # Auto-mode tick
+            if _auto_enabled:
+                _auto_tick()
+
             time.sleep(0.5)
     except KeyboardInterrupt:
         print("\nArrêt")
@@ -569,3 +707,12 @@ if __name__ == "__main__":
         if _led_stop:     _led_stop.set()
         if _LED:          _led.shutdown()
         _panel.close()
+        # Flush lyrics cache et arrêt propre des sources
+        try:
+            _bpm.stop()
+        except:
+            pass
+        try:
+            _lyrics.stop()
+        except:
+            pass
