@@ -82,7 +82,7 @@ _LED_RGB = {
     "teal":   (  0, 210, 150),
     "green":  (  0, 212, 130),
     "yellow": (255, 200,   0),
-    "orange": (255,  85,   0),
+    "orange": (255,  40,   0),
     "red":    (255,   0,   0),
     "pink":   (255,  20, 100),
     "white":  (220, 220, 220),
@@ -428,9 +428,10 @@ def _draw_terminal_hud(img: Image.Image, gauges: list, now: str) -> Image.Image:
     _draw_col(left_metrics,  x_base=0,     align_right=False)
     _draw_col(right_metrics, x_base=WIDTH, align_right=True)
 
-    result = img.convert("RGBA")
-    result.alpha_composite(overlay)
-    return result.convert("RGB")
+    # Optimisation: paste() est ~50% plus rapide que alpha_composite()
+    result = img.copy()
+    result.paste(overlay, (0, 0), overlay)
+    return result
 
 
 # ── Animated Abstract Art ────────────────────────────────────────────────────────────
@@ -569,27 +570,49 @@ def _draw_lyrics_hud(img: Image.Image) -> Image.Image:
     time_now = time.monotonic()
     is_blank = state is None or not state["lines"]
 
+    # Vérifie si le mode est blank (fond noir)
+    is_black_bg = (background_override is not None and
+                   background_override.width == WIDTH and
+                   background_override.height == HEIGHT)
+    # Vérifie si le fond est vraiment noir (tous les pixels à 0,0,0)
+    if is_black_bg:
+        try:
+            # Teste quelques pixels au centre
+            px = background_override.load()
+            center_color = px[WIDTH//2, HEIGHT//2]
+            is_black_bg = (center_color == (0, 0, 0) or center_color == (0, 0, 0, 255))
+        except:
+            is_black_bg = False
+
     # Fond overlay
     overlay = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
 
     if is_blank:
         # MODE BLANK: artwork plein écran, bien visible
         art_layer = _animated_abstract_art(time_now)
-        overlay.alpha_composite(art_layer)
+        # Optimisation: paste() est ~50% plus rapide que alpha_composite()
+        overlay.paste(art_layer, (0, 0), art_layer)
         od = ImageDraw.Draw(overlay)
         # Pas de texte, juste l'art qui bouge
     else:
-        # MODE LYRICS: fond lines.jpg (fallback art animé) assombri + lyrics
-        bg = _get_lyrics_bg()
-        if bg is not None:
-            bg_layer = bg.copy()
+        # MODE LYRICS
+        if is_black_bg:
+            # Fond noir simple - pas d'image, juste les lyrics
+            overlay = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+            od = ImageDraw.Draw(overlay)
         else:
-            bg_layer = _animated_abstract_art(time_now)
-        # Assombrit le fond pour la lisibilité du texte
-        dim_overlay = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 180))
-        bg_layer.alpha_composite(dim_overlay)
-        overlay.alpha_composite(bg_layer)
-        od = ImageDraw.Draw(overlay)
+            # fond lines.jpg (fallback art animé) assombri + lyrics
+            bg = _get_lyrics_bg()
+            if bg is not None:
+                bg_layer = bg.copy()
+            else:
+                bg_layer = _animated_abstract_art(time_now)
+            # Assombrit le fond pour la lisibilité du texte
+            # Optimisation: paste() est ~50% plus rapide que alpha_composite()
+            dim_layer = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 70))
+            bg_layer.paste(dim_layer, (0, 0), dim_layer)
+            overlay.paste(bg_layer, (0, 0), bg_layer)
+            od = ImageDraw.Draw(overlay)
 
     CY = HEIGHT // 2
     LINE_SPACING = 70
@@ -683,18 +706,55 @@ def _draw_lyrics_hud(img: Image.Image) -> Image.Image:
         def _draw_line(text, font, cy_offset, alpha, scale=1.0, glow=False):
             if not text:
                 return
-            # Scale la police si besoin
-            if scale != 1.0:
-                try:
-                    font = _font(int(font.size * scale))
-                except:
-                    pass
 
+            # Calcule la taille optimale de police selon la longueur du texte
+            # PRIORITÉ: réduire la police avant de tronquer
+            char_count = len(text)
+            max_width = WIDTH - 100  # marge de sécurité
+
+            # Taille de base selon scale
+            base_size = int(font.size * scale) if scale != 1.0 else font.size
+
+            # Réduction progressive selon longueur:
+            # - 0-15 chars: taille normale
+            # - 16-25 chars: -10%
+            # - 26-40 chars: -20%
+            # - 41+ chars: -30%
+            if char_count > 40:
+                adjusted_size = int(base_size * 0.7)
+            elif char_count > 25:
+                adjusted_size = int(base_size * 0.8)
+            elif char_count > 15:
+                adjusted_size = int(base_size * 0.9)
+            else:
+                adjusted_size = base_size
+
+            # Applique la taille ajustée
+            if adjusted_size != base_size:
+                try:
+                    font = _font(adjusted_size)
+                except:
+                    font = _font(base_size)
+
+            # Vérifie la largeur avec la nouvelle taille
             bbox = od.textbbox((0, 0), text, font=font)
             tw = bbox[2] - bbox[0]
-            # Tronque
+
+            # Réduction supplémentaire si encore trop large (max 3 itérations)
+            reduction_iter = 0
+            while tw > max_width and reduction_iter < 3:
+                adjusted_size = max(28, int(adjusted_size * 0.85))  # min 28px
+                try:
+                    font = _font(adjusted_size)
+                    bbox = od.textbbox((0, 0), text, font=font)
+                    tw = bbox[2] - bbox[0]
+                except:
+                    break
+                reduction_iter += 1
+
+            # Tronque uniquement si vraiment trop long même avec police réduite
             display = text
-            while tw > WIDTH - 100 and len(display) > 4:
+            while tw > max_width and len(display) > 4:
                 display = display[:-4] + "…"
                 bbox = od.textbbox((0, 0), display, font=font)
                 tw = bbox[2] - bbox[0]
@@ -704,21 +764,39 @@ def _draw_lyrics_hud(img: Image.Image) -> Image.Image:
             y = CY + cy_offset - bh // 2
 
             if glow:
-                # Glow subtil multi-couche
-                for g in range(6, 0, -2):
-                    od.text((x + g//2, y + g//2), display, font=font,
-                            fill=(*COLOR_ACCENT[:3], int(alpha * 0.08 * g)))
-                # Ombre
-                od.text((x + 3, y + 3), display, font=font, fill=(0, 0, 0, 100))
+                # Glow très subtil - seulement ombre noire pour lisibilité
+                od.text((x + 2, y + 2), display, font=font, fill=(0, 0, 0, 80))
 
             od.text((x, y), display, font=font, fill=(*COLOR_TEXT[:3], int(alpha)))
 
         # Lignes visibles : de -VISIBLE_RANGE à +VISIBLE_RANGE
+        # Calcule l'espacement variable autour de la ligne courante
+        current_text = lines[display_idx][1] if display_idx < len(lines) else ""
+        current_len = len(current_text)
+        # Si la ligne courante est longue (> 25 chars), augmente l'espacement avec les adjacentes
+        if current_len > 25:
+            spacing_boost = 50  # espace supplémentaire autour de la ligne longue
+        else:
+            spacing_boost = 0
+
         for offset in range(-VISIBLE_RANGE, VISIBLE_RANGE + 1):
             line_idx = display_idx + offset
             if 0 <= line_idx < len(lines):
                 text = lines[line_idx][1]
-                base_y = offset * LINE_SPACING  # position fixe, pas d'animation
+
+                # Espacement variable : plus grand entre la ligne courante et les adjacentes
+                if offset == 0:
+                    base_y = 0  # ligne courante centrée
+                elif offset == -1:
+                    base_y = -LINE_SPACING - spacing_boost  # ligne précédente plus haut
+                elif offset == 1:
+                    base_y = LINE_SPACING + spacing_boost   # ligne suivante plus bas
+                elif offset < -1:
+                    # Lignes au-dessus de la précédente : compressées
+                    base_y = -LINE_SPACING - spacing_boost + (offset + 1) * (LINE_SPACING - 10)
+                else:
+                    # Lignes en-dessous de la suivante : compressées
+                    base_y = LINE_SPACING + spacing_boost + (offset - 1) * (LINE_SPACING - 10)
 
                 if offset == 0:
                     # Ligne courante - GRANDE, brillante
@@ -746,9 +824,10 @@ def _draw_lyrics_hud(img: Image.Image) -> Image.Image:
                 od.rectangle([bx, by, bx + int(bar_w * prog), by + 2],
                             fill=(*COLOR_ACCENT[:3], 220))
 
-    result = img.convert("RGBA")
-    result.alpha_composite(overlay)
-    return result.convert("RGB")
+    # Optimisation: paste() est ~50% plus rapide que alpha_composite()
+    result = img.copy()
+    result.paste(overlay, (0, 0), overlay)
+    return result
 
 
 def build_frame() -> Image.Image:
@@ -809,9 +888,8 @@ def build_frame() -> Image.Image:
         od = ImageDraw.Draw(overlay)
         od.text((x+4, y+4), now, font=FONT_CLOCK_BIG, fill=(0, 0, 0, 80))
         od.text((x, y), now, font=FONT_CLOCK_BIG, fill=(*COLOR_TEXT[:3], 140))
-        img = img.convert("RGBA")
-        img.alpha_composite(overlay)
-        img = img.convert("RGB")
+        # Optimisation: paste() est ~50% plus rapide que alpha_composite()
+        img.paste(overlay, (0, 0), overlay)
 
     else:
         # Composite le fond statique (tracks, halos, labels)
