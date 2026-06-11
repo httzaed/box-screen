@@ -342,8 +342,15 @@ def _remove_topic_noise(text: str) -> str:
     return " ".join(text.split())
 
 def _clean_artist(artist: str) -> str:
-    """Retire les suffixes parasites type '- Topic', '- VEVO', 'VEVO', etc."""
+    """Retire les suffixes parasites type '- Topic', '- VEVO', '| Vevo', etc."""
     a = " ".join(artist.split())
+
+    # ── Exceptions spéciales ───────────────────────────────────────────────────────────
+    # Tyler, The Creator : corrige les fausses détections YouTube/SMTC
+    if "tyler" in a.lower() and "creator" in a.lower():
+        a = "Tyler, The Creator"
+    elif "the creator" in a.lower() and "boot syins" in a.lower():
+        a = "Tyler, The Creator"  # Cas: "After The Storm , The Creator, Bootsy Collins ft. tyler"
 
     # Cas particulier: "georgemichaelVEVO" → "georgemichael" → "George Michael"
     # Détecte camelCase AVANT de retirer les suffixes
@@ -364,6 +371,9 @@ def _clean_artist(artist: str) -> str:
             if len(parts) >= 2:
                 a = ' '.join(parts)
 
+    # Supprimer les suffixes après | (pipe) - YouTube pattern "Artist | Vevo"
+    a = re.sub(r'\s*\|.*$', '', a).strip()
+
     # Maintenant retire les suffixes (VEVO, Topic, etc.)
     a = _ARTIST_NOISE.sub('', a).strip()
     # Retire aussi un éventuel " - " en fin
@@ -372,16 +382,52 @@ def _clean_artist(artist: str) -> str:
     return a
 
 
+def _normalize_featuring(title: str) -> str:
+    """
+    Corrige les featuring mal formés dans le titre.
+    Exemples :
+      - "Multiply  J ft.  juicy" → "Multiply ft. Juicy J"
+      - "Song Name X ft. Y" → "Song Name ft. X Y" (réparation inversion)
+    """
+    import re as _re
+    t = " ".join(title.split())  # normalise espaces
+
+    # Pattern spécifique: "Nom Initiale ft. Suffixe" où l'initiale devrait être après ft.
+    # Ex: "Multiply J ft. juicy" → "Multiply ft. Juicy J"
+    # Le pattern: (mot) (initiale/court) ft. (suffixe)
+    ft_match = _re.search(r'(\S+)\s+(\S{1,3})\s+ft\s*\.\s*(\S+)', t, _re.IGNORECASE)
+    if ft_match:
+        base, initial, suffix = ft_match.groups()
+        # Si l'initiale est vraiment courte (1-3 caractères) et le suffixe n'est pas "the", "a", etc
+        if len(initial) <= 3 and suffix.lower() not in ['the', 'a', 'an', 'dj', 'mc']:
+            # Inverser: suffixe + initiale (capitalisés)
+            feat_name = f"{suffix.capitalize()} {initial.upper()}"
+            t = f"{base} ft. {feat_name}"
+            t = " ".join(t.split())
+            print(f"[LYRICS] featuring réparé: '{title}' -> '{t}'")
+            return t
+
+    # Normaliser le format "ft." → " ft. "
+    t = _re.sub(r'\s*[Ff][Tt]\.\s*', ' ft. ', t)
+    t = _re.sub(r'\s*[Ff][Ee][Aa][Tt]\.\s*', ' feat. ', t)
+    t = _re.sub(r'\s+[Ff][Ee][Aa][Tt][Uu][Rr][Ii][Nn][Gg]\s+', ' featuring ', t, flags=_re.IGNORECASE)
+
+    return " ".join(t.split())
+
+
 def _clean_title(title: str) -> list[str]:
     """
     Retourne plusieurs variantes du titre à essayer :
     - tel quel (espaces normalisés)
     - sans l'année finale (ex: "Song Name 1980" → "Song Name")
     - sans les tags entre parenthèses/crochets (ex: "Song (Remaster)" → "Song")
+    - sans les suffixes YouTube (ex: "Song | Vevo" → "Song")
     """
     import re as _re
     candidates = []
-    t = " ".join(title.split())  # normalise espaces multiples
+
+    # D'abord, normaliser les featuring mal formés
+    t = _normalize_featuring(title)
     candidates.append(t)
 
     # Supprimer l'année en fin (4 chiffres)
@@ -393,6 +439,17 @@ def _clean_title(title: str) -> list[str]:
     no_paren = _re.sub(r'\s*[\(\[][^\)\]]*[\)\]]\s*', ' ', no_year or t).strip()
     if no_paren and no_paren not in candidates:
         candidates.append(no_paren)
+
+    # Supprimer les suffixes après | (pipe) - YouTube pattern "Song | Vevo"
+    base = no_paren or no_year or t
+    no_pipe = _re.sub(r'\s*\|.*$', '', base).strip()
+    if no_pipe and no_pipe not in candidates:
+        candidates.append(no_pipe)
+
+    # Supprimer les suffixes après " - " (pattern "Song - Vevo")
+    no_dash_suffix = _re.sub(r'\s*[-–]\s*(Topic|VEVO|Official|Music|Video|Audio|Lyrics)\s*$', '', base, flags=_re.IGNORECASE).strip()
+    if no_dash_suffix and no_dash_suffix not in candidates:
+        candidates.append(no_dash_suffix)
 
     return candidates
 
@@ -441,8 +498,78 @@ def _get_disk_cache() -> dict:
     return _disk_cache
 
 
+def _detect_version_suffix(title: str) -> str:
+    """
+    Détecte les suffixes de version dans le titre.
+    Retourne le suffixe normalisé ou une chaîne vide pour la version studio standard.
+
+    Exemples:
+    - "Song Name (Live)" → "live"
+    - "Song Name - Live Version" → "live"
+    - "Song Name [Remix]" → "remix"
+    - "Song Name (Studio Version)" → "studio"
+    - "Song Name" → "" (version standard)
+    """
+    if not title:
+        return ""
+
+    t = title.lower()
+
+    # Suffixes communs à détecter (avec leurs variantes)
+    version_patterns = {
+        "live": ["live", "live version", "live at", "performed live", "concert", "tour"],
+        "studio": ["studio", "studio version", "original", "album version"],
+        "remix": ["remix", "remastered", "mix"],
+        "acoustic": ["acoustic", "unplugged"],
+        "radio": ["radio edit", "radio", "radio version"],
+        "extended": ["extended", "extended version", "extended mix"],
+        "instrumental": ["instrumental", "karaoke"],
+        "demo": ["demo", "demo version"],
+    }
+
+    # Cherche d'abord les patterns entre parenthèses
+    import re
+    paren_match = re.search(r'\(([^)]+)\)', t)
+    if paren_match:
+        content = paren_match.group(1)
+        for version, patterns in version_patterns.items():
+            for pattern in patterns:
+                if pattern in content:
+                    return version
+
+    # Cherche les patterns entre crochets
+    bracket_match = re.search(r'\[([^\]]+)\]', t)
+    if bracket_match:
+        content = bracket_match.group(1)
+        for version, patterns in version_patterns.items():
+            for pattern in patterns:
+                if pattern in content:
+                    return version
+
+    # Cherche les patterns après un tiret
+    if " - " in t:
+        parts = t.split(" - ")
+        for part in parts:
+            for version, patterns in version_patterns.items():
+                for pattern in patterns:
+                    if pattern in part:
+                        return version
+
+    # Cherche les patterns directement dans le titre
+    for version, patterns in version_patterns.items():
+        for pattern in patterns:
+            if f" {pattern}" in t or f"{pattern} " in t:
+                return version
+
+    return ""  # Version standard (studio par défaut)
+
+
 def _cache_key(artist: str, title: str) -> str:
-    return f"{artist.lower()}|{title.lower()}"
+    """Génère une clé de cache qui inclut la version de la chanson."""
+    version = _detect_version_suffix(title)
+    if version:
+        return f"{artist.lower()}|{title.lower()}|{version}"
+    return f"{artist.lower()}|{title.lower()}|studio"
 
 
 def _get_cached_lyrics(artist: str, title: str) -> dict | None:
@@ -456,7 +583,9 @@ def _get_cached_lyrics(artist: str, title: str) -> dict | None:
         entry["last_played"] = time.time()
         entry["play_count"] = entry.get("play_count", 0) + 1
         _mark_cache_dirty()
-        print(f"[LYRICS] cache HIT: {artist} - {title} (joué {entry['play_count']} fois)")
+        version = _detect_version_suffix(title)
+        version_str = f" [{version}]" if version else " [studio]"
+        print(f"[LYRICS] cache HIT: {artist} - {title}{version_str} (joué {entry['play_count']} fois)")
         return {
             "synced": entry.get("synced", []),
             "plain": entry.get("plain", ""),
@@ -997,6 +1126,15 @@ def _entries_to_lyrics(entries, source: str) -> dict | None:
     return None
 
 
+def _get_cookies_file() -> str | None:
+    """Retourne le chemin du cookies.txt du projet (priorité absolue)."""
+    import pathlib
+    cookies_path = pathlib.Path(__file__).parent / "cookies.txt"
+    if cookies_path.exists():
+        return str(cookies_path)
+    return None
+
+
 def _fetch_captions_transcript_api(video_id: str) -> dict | None:
     """Récupère les sous-titres via youtube-transcript-api (pas d'OAuth)."""
     try:
@@ -1005,9 +1143,8 @@ def _fetch_captions_transcript_api(video_id: str) -> dict | None:
 
         print(f"[LYRICS]   -> Trying youtube-transcript-api...")
 
-        # Auth via cookies (contourne le blocage IP) si un cookies.txt est fourni.
-        # Compatible nouvelles versions (proxies/http_client) et anciennes (cookie_path).
-        cookies_file = os.environ.get("YTDLP_COOKIES_FILE")
+        # PRIORITÉ ABSOLUE: cookies.txt du projet pour éviter le blocage IP
+        cookies_file = _get_cookies_file() or os.environ.get("YTDLP_COOKIES_FILE")
         api = None
         if cookies_file and os.path.exists(cookies_file):
             try:
@@ -1018,18 +1155,19 @@ def _fetch_captions_transcript_api(video_id: str) -> dict | None:
                 sess = requests.Session()
                 sess.cookies = jar
                 api = YouTubeTranscriptApi(http_client=sess)
-                print(f"[LYRICS]   transcript-api: cookies file = {cookies_file}")
+                print(f"[LYRICS]   transcript-api: ✅ cookies file = {cookies_file}")
             except TypeError:
                 # Ancienne signature: pas de http_client -> fallback cookie_path
                 try:
                     api = YouTubeTranscriptApi(cookie_path=cookies_file)
-                    print(f"[LYRICS]   transcript-api: cookie_path = {cookies_file}")
+                    print(f"[LYRICS]   transcript-api: ✅ cookie_path = {cookies_file}")
                 except Exception:
                     api = None
             except Exception as ce:
                 print(f"[LYRICS]   transcript-api cookies error: {str(ce)[:60]}")
                 api = None
         if api is None:
+            print(f"[LYRICS]   transcript-api: ⚠️  sans cookies (IP risk)")
             api = YouTubeTranscriptApi()
 
         transcripts = None
@@ -1138,13 +1276,12 @@ def _fetch_captions_ytdlp(video_id: str) -> dict | None:
                 url,
             ]
             # Auth via cookies du navigateur pour contourner le blocage IP.
-            # Surchargeable via env: YTDLP_COOKIES_BROWSER (ex: "firefox", "edge")
-            # ou YTDLP_COOKIES_FILE (chemin vers un cookies.txt exporté).
-            cookies_file = os.environ.get("YTDLP_COOKIES_FILE")
+            # PRIORITÉ ABSOLUE: cookies.txt du projet, puis env vars.
+            cookies_file = _get_cookies_file() or os.environ.get("YTDLP_COOKIES_FILE")
             cookies_browser = os.environ.get("YTDLP_COOKIES_BROWSER", "chrome")
             if cookies_file and os.path.exists(cookies_file):
                 cmd[-1:-1] = ["--cookies", cookies_file]
-                print(f"[LYRICS]   yt-dlp: cookies file = {cookies_file}")
+                print(f"[LYRICS]   yt-dlp: ✅ cookies file = {cookies_file}")
             elif cookies_browser and cookies_browser.lower() != "none":
                 cmd[-1:-1] = ["--cookies-from-browser", cookies_browser]
                 print(f"[LYRICS]   yt-dlp: cookies-from-browser = {cookies_browser}")
@@ -1239,12 +1376,354 @@ def _result_to_lyrics(data: dict) -> dict | None:
     return None
 
 
+# ── Scoring de qualité des lyrics ─────────────────────────────────────────────────────
+# Le système de scoring évalue plusieurs critères pour choisir la meilleure source
+# de paroles parmi lrclib, YouTube captions et autres APIs.
+
+def _normalize_for_match(text: str) -> str:
+    """
+    Normalise un texte pour la comparaison floue (titre/artiste).
+    - lowercase
+    - sans feat./prod./remaster/parenthèses
+    - sans espaces multiples
+    """
+    import re as _re
+    if not text:
+        return ""
+    t = text.lower()
+
+    # Retire tout entre parenthèses/crochets (d'abord!)
+    t = _re.sub(r'[\(\[][^\)\]]*[\)\]]', '', t)
+
+    # Retire featuring, prod., etc (tout ce qui suit)
+    t = _re.sub(r'\s*[Ff][Tt]\.\s+.*$', '', t)
+    t = _re.sub(r'\s*[Ff]eat(?:uring)?\.?\s+.*$', '', t)
+    t = _re.sub(r'\s*[Pp]rod(?:uced)?\.?\s+(?:by\s+)?$', '', t)
+    t = _re.sub(r'\s*[Pp]rod(?:uced)?\.?\s+(?:by\s+)?.*$', '', t)
+
+    # Retire les suffixes courants après tiret (Radio Edit, Remastered, Topic, etc.)
+    suffixes = ['radio edit', 'remastered', 'remaster', 'explicit', 'clean',
+                'bonus track', 'album version', 'single version', 'topic',
+                'official', 'vevo', 'music', 'video', 'hd', 'lyrics']
+    for suffix in suffixes:
+        t = _re.sub(r'\s*[-–]\s*' + _re.escape(suffix) + r'\b.*$', '', t)
+
+    # Normalise les espaces
+    t = ' '.join(t.split())
+    return t
+
+
+def _fuzzy_match(a: str, b: str) -> float:
+    """
+    Similarité floue entre deux chaînes (0.0 à 1.0).
+    Utilise SequenceMatcher de difflib.
+    """
+    from difflib import SequenceMatcher as _SM
+    if not a or not b:
+        return 0.0
+    na, nb = _normalize_for_match(a), _normalize_for_match(b)
+    if not na or not nb:
+        return 0.0
+    return _SM(None, na, nb).ratio()
+
+
+def _detect_caption_auto_generated(synced: list) -> tuple[bool, str]:
+    """
+    Détecte si les captions semblent auto-générées par YouTube.
+    Retourne (is_auto, language_code).
+
+    Signes d'auto-generation:
+    - Pas de ponctuation ou très peu
+    - Tout en minuscules
+    - Mots collés (sans espaces)
+    - [Music], [Applause], ♪ fréquent
+    """
+    if not synced or len(synced) < 3:
+        return False, ""
+
+    text_samples = [text for _, text in synced[-10:]]  # Dernières lignes
+    all_text = ' '.join(text_samples)
+
+    # Compte la ponctuation
+    punct_count = sum(1 for c in all_text if c in '.,!?;:')
+    punct_ratio = punct_count / len(all_text) if all_text else 0
+
+    # Vérifie si tout est en minuscules
+    has_upper = any(c.isupper() for c in all_text if c.isalpha())
+
+    # Mots collés (signe de mauvaise transcription)
+    # Un mot "collé" contient plus de 20 caractères sans espace
+    has_collapsed = any(len(word) > 20 for word in all_text.split())
+
+    # Signes de bruit (crochets, notes)
+    noise_count = sum(1 for line in text_samples if '[' in line or '♪' in line)
+    noise_ratio = noise_count / len(text_samples) if text_samples else 0
+
+    # Détection langage (rudimentaire)
+    lang = "unknown"
+    # Anglais: mots courants
+    en_words = ['the', 'and', 'is', 'in', 'to', 'of', 'you', 'that']
+    fr_words = ['le', 'la', 'les', 'et', 'est', 'en', 'que', 'qui']
+    words = all_text.lower().split()
+    en_count = sum(1 for w in words if w in en_words)
+    fr_count = sum(1 for w in words if w in fr_words)
+    if en_count > 3:
+        lang = "en"
+    elif fr_count > 3:
+        lang = "fr"
+
+    # Heuristique d'auto-generation
+    is_auto = (
+        punct_ratio < 0.02 or  # Moins de 2% de ponctuation
+        not has_upper or       # Pas de majuscules
+        has_collapsed or       # Mots collés
+        noise_ratio > 0.3      # Plus de 30% de lignes avec bruit
+    )
+
+    return is_auto, lang
+
+
+def _check_temporal_coherence(synced: list, media_duration: float | None) -> tuple[bool, str]:
+    """
+    Vérifie la cohérence temporelle des timestamps.
+    Retourne (is_coherent, reason).
+
+    Critères:
+    - Timestamps strictement croissants
+    - Premier timestamp pas absurde (< 60s sauf intro longue)
+    - Dernier timestamp ≤ durée du média
+    - Densité raisonnable (ni 5 lignes pour 4 min, ni 400)
+    """
+    if not synced or len(synced) < 2:
+        return True, ""
+
+    # Vérifie croissance stricte
+    timestamps = [ts for ts, _ in synced if ts is not None]
+    if len(timestamps) != len(synced):
+        return False, "certains timestamps manquent"
+
+    for i in range(len(timestamps) - 1):
+        if timestamps[i] >= timestamps[i + 1]:
+            return False, f"timestamps non croissants: {timestamps[i]} >= {timestamps[i + 1]}"
+
+    first_ts = timestamps[0]
+    last_ts = timestamps[-1]
+
+    # Premier timestamp pas absurde
+    if first_ts > 60:
+        return False, f"premier timestamp trop tard: {first_ts}s"
+
+    # Dernier timestamp vs durée
+    if media_duration and last_ts > media_duration + 5:
+        return False, f"dernier timestamp > durée: {last_ts}s > {media_duration}s"
+
+    # Densité raisonnable
+    if media_duration:
+        duration = last_ts - first_ts
+        density = len(synced) / duration if duration > 0 else 0
+        # Moins de 0.05 ligne/sec (1 ligne / 20s) ou plus de 2 lignes/sec
+        if density < 0.05:
+            return False, f"densité trop faible: {len(synced)} lignes en {duration:.0f}s"
+        if density > 2.5:
+            return False, f"densité trop élevée: {len(synced)} lignes en {duration:.0f}s"
+
+    return True, ""
+
+
+def score_lyrics_candidate(
+    candidate: dict,
+    artist: str,
+    title: str,
+    media_duration: float | None = None,
+    video_id: str | None = None,
+) -> tuple[float, dict]:
+    """
+    Score un candidat de lyrics selon plusieurs critères.
+
+    Args:
+        candidate: dict avec "synced", "plain", et optionnellement
+                   "trackName", "artistName", "duration", "source"
+        artist: artiste attendu
+        title: titre attendu
+        media_duration: durée du média en secondes (si connue)
+        video_id: ID YouTube (si dispo)
+
+    Returns:
+        (score: float, details: dict)
+        score: 0.0 à 100.0, plus élevé = meilleur
+        details: dict avec les sous-scores et raison
+    """
+    details = {
+        "sync_bonus": 0,
+        "metadata_match": 0,
+        "metadata_penalty": 0,
+        "temporal_score": 0,
+        "text_quality": 0,
+        "source_bonus": 0,
+        "total": 0,
+        "reason": [],
+    }
+
+    if not candidate or not candidate.get("plain"):
+        details["reason"].append("pas de texte")
+        return 0.0, details
+
+    total = 0.0
+
+    # ── 1. SYNC : syncedLyrics > plain ─────────────────────────────────────
+    synced = candidate.get("synced", [])
+    has_sync = bool(synced) and len(synced) > 0 and synced[0][0] is not None
+
+    if has_sync:
+        details["sync_bonus"] = 30  # Gros bonus pour sync
+        total += 30
+        details["reason"].append(f"✓ sync ({len(synced)} lignes)")
+    else:
+        details["reason"].append("✗ plain only")
+
+    # ── 2. MATCH MÉTADONNÉES ────────────────────────────────────────────────
+    # lrclib renvoie trackName/artistName/duration
+    cand_artist = candidate.get("artistName") or candidate.get("artist")
+    cand_title = candidate.get("trackName") or candidate.get("title")
+    cand_duration = candidate.get("duration")
+
+    artist_match = 0.0
+    title_match = 0.0
+
+    if cand_artist:
+        artist_match = _fuzzy_match(cand_artist, artist)
+    if cand_title:
+        title_match = _fuzzy_match(cand_title, title)
+
+    # Score de match (0-15)
+    metadata_score = (artist_match * 7 + title_match * 8)
+    details["metadata_match"] = metadata_score
+    total += metadata_score
+
+    if artist_match > 0.8 and title_match > 0.8:
+        details["reason"].append(f"✓ métadonnées match (artist:{artist_match:.0%}, title:{title_match:.0%})")
+    elif artist_match > 0.5 or title_match > 0.5:
+        details["reason"].append(f"~ match partiel (artist:{artist_match:.0%}, title:{title_match:.0%})")
+
+    # Pénalité durée si écart > 7s
+    if cand_duration and media_duration:
+        duration_diff = abs(cand_duration - media_duration)
+        if duration_diff > 7:
+            penalty = min(20, int(duration_diff / 5))  # -4 points par 5s de diff
+            details["metadata_penalty"] = -penalty
+            total -= penalty
+            details["reason"].append(f"✗ durée écart {duration_diff:.0f}s (pénalité -{penalty})")
+
+    # ── 3. COHÉRENCE TEMPORELLE ────────────────────────────────────────────
+    if has_sync:
+        is_coherent, reason = _check_temporal_coherence(synced, media_duration)
+        if is_coherent:
+            details["temporal_score"] = 10
+            total += 10
+            details["reason"].append("✓ timestamps cohérents")
+        else:
+            details["temporal_score"] = 0
+            details["reason"].append(f"✗ {reason}")
+
+    # ── 4. QUALITÉ TEXTE ────────────────────────────────────────────────────
+    text_quality_score = 0
+
+    # Détecte auto-generation YouTube
+    source = candidate.get("source", "")
+    is_youtube = "youtube" in source.lower() or video_id and not candidate.get("artistName")
+
+    if is_youtube and has_sync:
+        is_auto, lang = _detect_caption_auto_generated(synced)
+        if is_auto:
+            text_quality_score = 0
+            details["reason"].append("✗ captions auto-générés (pauvres)")
+        else:
+            text_quality_score = 15
+            details["reason"].append("✓ captions uploadées (bonne qualité)")
+    elif has_sync:
+        text_quality_score = 10
+        details["reason"].append("✓ sync LRC (bonne qualité)")
+
+    details["text_quality"] = text_quality_score
+    total += text_quality_score
+
+    # ── 5. SOURCE BONUS ─────────────────────────────────────────────────────
+    # lrclib a des métadonnées fiables
+    if candidate.get("artistName") and candidate.get("trackName"):
+        details["source_bonus"] = 5
+        total += 5
+
+    details["total"] = total
+    return total, details
+
+
+def _compare_candidates_cross(
+    candidates: list[dict],
+    artist: str,
+    title: str,
+) -> list[tuple[int, int, float]]:
+    """
+    Compare les candidats par similarité de texte.
+    Retourne liste de (i, j, similarity) pour les paires avec similarité > 0.5.
+    """
+    from difflib import SequenceMatcher as _SM
+
+    comparisons = []
+    for i in range(len(candidates)):
+        for j in range(i + 1, len(candidates)):
+            c1, c2 = candidates[i], candidates[j]
+            p1, p2 = c1.get("plain", ""), c2.get("plain", "")
+            if not p1 or not p2:
+                continue
+
+            # Similarité globale
+            sim = _SM(None, p1, p2).ratio()
+
+            # Similarité par lignes communes (si sync)
+            s1, s2 = c1.get("synced", []), c2.get("synced", [])
+            if s1 and s2 and s1[0][0] is not None and s2[0][0] is not None:
+                # Prend les lignes aux timestamps similaires
+                lines1 = [text for _, text in s1]
+                lines2 = [text for _, text in s2]
+                common_ratio = len(set(lines1) & set(lines2)) / max(len(set(lines1)), len(set(lines2))) if set(lines1) | set(lines2) else 0
+                if common_ratio > 0.5:
+                    comparisons.append((i, j, common_ratio))
+
+            if sim > 0.5:
+                comparisons.append((i, j, sim))
+
+    return comparisons
+
+
 def _fetch_lyrics(artist: str, title: str) -> dict | None:
     """Cherche lyrics - plusieurs stratégies, fallback APIs."""
     # Enregistre la clé de recherche pour détecter les changements
     global _current_search_key
     search_key = f"{artist.lower()}|{title.lower()}"
     _current_search_key = search_key
+
+    # ── Check mashup config (priorité pour les mashups manuels) ─────────────────
+    try:
+        import mashup_config
+        mashup_result = mashup_config.lookup_mashup(artist, title)
+        if mashup_result:
+            synced, plain, offset = mashup_result
+            if synced or plain:
+                print(f"[LYRICS] ✅ mashup trouvé: {artist} - {title}")
+                _set_cached(artist, title, {
+                    "synced": synced or [],
+                    "plain": plain,
+                    "offset": offset,
+                })
+                return {
+                    "synced": synced or [],
+                    "plain": plain,
+                    "offset": offset,
+                }
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"[LYRICS] Erreur mashup config: {e}")
 
     # Check cache
     cached = _get_cached(artist, title)
@@ -1257,6 +1736,9 @@ def _fetch_lyrics(artist: str, title: str) -> dict | None:
     # Nettoie le titre - retire tout le junk à la fin
     import re as _re
     clean_title = title
+
+    # PRIORITÉ: réparer les featuring mal formés (ex: "J ft. juicy" → "ft. Juicy J")
+    clean_title = _normalize_featuring(clean_title)
 
     # Retire [Official Video] [HD] (crochets)
     clean_title = _re.sub(r'\s*[\(\[][^\)\]]*[\)\]]\s*$', '', clean_title).strip()
@@ -1388,41 +1870,133 @@ def _create_estimated_sync(lines: list, bpm: float | None) -> list:
 
 def _load_lyrics_for(artist: str, title: str, video_id: str | None) -> dict | None:
     """
-    Charge les paroles en PRIVILÉGIANT lrclib synchronisé (gratuit, sans quota).
+    Charge les paroles en utilisant un SYSTÈME DE SCORING DE QUALITÉ.
 
-    Ordre :
-      1) lrclib / APIs (_fetch_lyrics) → si elles renvoient du SYNCHRONISÉ, on
-         s'arrête là : pas besoin de toucher au quota YouTube.
-      2) Captions YouTube → uniquement en secours, si on a un video_id ET que
-         lrclib n'a pas fourni de timestamps (et que le quota n'est pas épuisé).
+    Pour une chanson donnée:
+      1) Fetch les candidats disponibles (lrclib + YouTube captions)
+      2) Scorers chacun selon: SYNC, MATCH MÉTADONNÉES, COHÉRENCE TEMPORELLE,
+         QUALITÉ TEXTE
+      3) Garder le meilleur score
+      4) Genius reste fallback plain-only
 
-    Utilisé par les deux branches de _run (YouTube extension ET SMTC).
+    Le scoring permet de choisir la meilleure source même quand elle n'est pas
+    la plus prioritaire (ex: lrclib bien syncé vs captions auto pourries).
     """
-    # 1) lrclib / APIs externes d'abord
-    lyrics = _fetch_lyrics(artist, title)
-    if _has_sync(lyrics):
-        print("[LYRICS] ✅ lrclib synchronisé — YouTube non sollicité")
-        return lyrics
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    # 2) Captions YouTube en secours seulement si lrclib n'a pas de sync
-    if video_id and not _quota_is_blocked():
-        print(f"[LYRICS]   -> lrclib sans sync, essai YouTube captions...")
-        yt_lyrics = _fetch_youtube_captions(video_id)
-        if _has_sync(yt_lyrics):
-            existing = _get_disk_cache().get(_cache_key(artist, title), {})
-            _set_cached_lyrics(
-                artist, title,
-                yt_lyrics["synced"], yt_lyrics.get("plain", ""),
-                existing.get("offset", 0.5),  # préserve l'offset calibré
-            )
-            _flush_cache_if_dirty()
-            print(f"[LYRICS] ✅ YouTube captions (sync) sauvegardées dans le cache")
-            return yt_lyrics
-    elif video_id:
-        print("[LYRICS]   -> YouTube ignoré (quota épuisé), on garde le plain lrclib")
+    candidates = []
+    media_duration = None  # Pourrait être enrichi via WinRT plus tard
 
-    # 3) Rien de synchronisé nulle part → on renvoie le plain de lrclib
-    return lyrics
+    # Nettoie le titre pour les recherches
+    import re as _re
+    clean_title = title
+    clean_title = _normalize_featuring(clean_title)
+    clean_title = _re.sub(r'\s*[\(\[][^\)\]]*[\)\]]\s*$', '', clean_title).strip()
+    clean_title = _re.sub(r'\s*[-–]\s*(Official|Video|HD|Remastered|Remaster|Explicit|Lyrics)\b.*$', '', clean_title, flags=_re.IGNORECASE).strip()
+    clean_title = _re.sub(r'\s*[-–]\s*\d{4}\s*$', '', clean_title).strip()
+    clean_title = _re.sub(r'\s*[\(\[][^()\]]*?(Official|Video|HD|Remaster|Version|Lyrics|Audio)[^)\]]*?[\)\]]', '', clean_title, flags=_re.IGNORECASE).strip()
+
+    print(f"[LYRICS] 🔍 Recherche multi-sources: {artist!r} / {clean_title!r}")
+
+    # ── Fetch parallèle des candidats ───────────────────────────────────────────
+    def _fetch_lrclib_candidate():
+        try:
+            data = _lrclib_get(artist, clean_title, timeout=15.0)
+            if data:
+                result = _result_to_lyrics(data)
+                if result:
+                    # Ajoute les métadonnées pour le scoring
+                    result["artistName"] = data.get("artistName")
+                    result["trackName"] = data.get("trackName")
+                    result["duration"] = data.get("duration")
+                    result["source"] = "lrclib"
+                    return result
+        except Exception as e:
+            print(f"[LYRICS]   lrclib erreur: {e}")
+        return None
+
+    def _fetch_youtube_candidate():
+        if video_id and not _quota_is_blocked():
+            try:
+                yt_lyrics = _fetch_youtube_captions(video_id)
+                if yt_lyrics:
+                    yt_lyrics["source"] = f"youtube_captions({video_id[:8]})"
+                    return yt_lyrics
+            except Exception as e:
+                print(f"[LYRICS]   YouTube captions erreur: {e}")
+        return None
+
+    # Lance les fetchs en parallèle
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="lyrics_fetch") as executor:
+        futures = {
+            executor.submit(_fetch_lrclib_candidate): "lrclib",
+            executor.submit(_fetch_youtube_candidate): "youtube",
+        }
+
+        for future in as_completed(futures, timeout=20):
+            source_name = futures[future]
+            try:
+                result = future.result()
+                if result:
+                    candidates.append(result)
+                    print(f"[LYRICS]   ✓ {source_name}: {len(result.get('synced', []))} lignes sync")
+            except Exception as e:
+                print(f"[LYRICS]   ✗ {source_name} exception: {e}")
+
+    # ── Scoring des candidats ───────────────────────────────────────────────────
+    if not candidates:
+        print(f"[LYRICS] ✗ Aucun candidat trouvé")
+        # Fallback Genius (plain-only)
+        print(f"[LYRICS]   → Fallback Genius (plain-only)...")
+        try:
+            data = _genius_fetch(artist, clean_title)
+            if data:
+                result = _result_to_lyrics(data)
+                if result:
+                    print(f"[LYRICS] OK Genius (fallback): {artist!r} / {clean_title!r}")
+                    result["source"] = "genius_fallback"
+                    _set_cached(artist, title, result)
+                    return result
+        except Exception as e:
+            print(f"[LYRICS]   Genius erreur: {e}")
+        return None
+
+    # Score chaque candidat
+    scored_candidates = []
+    for i, cand in enumerate(candidates):
+        score, details = score_lyrics_candidate(
+            cand, artist, title, media_duration, video_id
+        )
+        scored_candidates.append((score, details, cand))
+        source = cand.get("source", f"candidate_{i}")
+        reasons = "; ".join(details["reason"])
+        print(f"[LYRICS]   📊 {source}: score={score:.0f} [{reasons}]")
+
+    # Cross-validation si plusieurs candidats sync
+    if len(scored_candidates) >= 2:
+        synced_candidates = [c for _, _, c in scored_candidates if c.get("synced") and c["synced"][0][0] is not None]
+        if len(synced_candidates) >= 2:
+            comparisons = _compare_candidates_cross(synced_candidates, artist, title)
+            if comparisons:
+                print(f"[LYRICS]   🔗 Cross-validation: {len(comparisons)} paires similaires")
+
+    # Choix du meilleur
+    best_score, best_details, best_candidate = max(scored_candidates, key=lambda x: x[0])
+    best_source = best_candidate.get("source", "unknown")
+
+    print(f"[LYRICS] ✅ Meilleur candidat: {best_source} (score={best_score:.0f})")
+
+    # Sauvegarde dans le cache avec métadonnées
+    existing = _get_disk_cache().get(_cache_key(artist, title), {})
+    _set_cached_lyrics(
+        artist, title,
+        best_candidate.get("synced", []),
+        best_candidate.get("plain", ""),
+        existing.get("offset", 0.5),
+    )
+    _flush_cache_if_dirty()
+
+    return best_candidate
 
 
 # ── Thread principal ──────────────────────────────────────────────────────────
@@ -1677,6 +2251,15 @@ def _run():
                         pos_frozen_count = 0
                         print(f"[LYRICS] ~ {artist} - {title}  [SMTC pos={p}]")
 
+                        # RESET calibration quand la chanson change
+                        _calibration_active = False
+                        _calibration_samples = []
+                        _calibration_done = False
+                        _calibrated_offset = None
+                        _next_sample_pos = 5.0
+                        _first_listen_mode = True
+                        _kalman_init()
+
                         # Annule toute recherche en cours
                         _current_search_key = None  # ← Annule la recherche précédente
 
@@ -1793,12 +2376,17 @@ def _run():
                                     _flush_cache_if_dirty()
 
                                 # Arrêt quand confiance > 90% et std < 0.3s
-                                if (_calibration_stats["confidence"] >= 0.9
+                                # OU après 50 samples (timeout pour éviter boucle infinie)
+                                if ((_calibration_stats["confidence"] >= 0.9
                                         and _calibration_stats["std"] is not None
                                         and _calibration_stats["std"] < 0.3
-                                        and n >= 8):
+                                        and n >= 8)
+                                    or n >= 50):
+                                    if n >= 50:
+                                        print(f"[LYRICS] ⚠️ calibration TEMPOUT (50 samples) — offset final : {_calibrated_offset:+.2f}s (σ={_calibration_stats['std']:.2f}s)")
+                                    else:
+                                        print(f"[LYRICS] ✅ calibration HAUTE PRÉCISION — offset final : {_calibrated_offset:+.2f}s (σ={_calibration_stats['std']:.2f}s, {_calibration_stats['outliers_removed']} outliers)")
                                     _calibration_done = True
-                                    print(f"[LYRICS] ✅ calibration HAUTE PRÉCISION — offset final : {_calibrated_offset:+.2f}s (σ={_calibration_stats['std']:.2f}s, {_calibration_stats['outliers_removed']} outliers)")
                         except Exception:
                             pass
         except Exception:
@@ -1848,9 +2436,11 @@ def start():
 
 
 def stop():
-    """Arrête la boucle de fetch et attend la fin du thread."""
+    """Arrête la boucle de fetch, flush le cache et attend la fin du thread."""
     global _running, _thread
     _running = False
+    # Flush le cache pour sauvegarder la calibration en cours
+    _flush_cache_if_dirty()
     if _thread is not None:
         _thread.join(timeout=2.0)
         _thread = None
