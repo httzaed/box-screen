@@ -922,7 +922,7 @@ def build_frame() -> Image.Image:
             return render_audio_viz.build_frame(bg=img)
         if cascade_mode == "idle":
             import render_ascii
-            return render_ascii.build_frame(bg=img)
+            return render_ascii.build_frame(bg=img, width=WIDTH, height=HEIGHT)
         return _draw_lyrics_hud(img)
 
     if LAYOUT == "clock":

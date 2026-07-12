@@ -1274,34 +1274,10 @@ function drawAudioViz() {
   const sh = screenCanvas.clientHeight;
 
   // Preview canvas follows the cascade state
+  // Ambience = toujours visible sauf idle (ASCII)
   const cascadeMode = state.cascade || 'idle';
-  const forceViz = state.force_viz || false;
 
-  if (cascadeMode === 'lyrics' && !forceViz) {
-    // Lyrics mode - dark background with music note and current line
-    sctx.fillStyle = '#010402';
-    sctx.fillRect(0, 0, sw, sh);
-
-    // Draw music note
-    sctx.fillStyle = '#2bff88';
-    sctx.font = '24px "JetBrains Mono"';
-    sctx.textAlign = 'center';
-    sctx.textBaseline = 'middle';
-    sctx.shadowColor = '#2bff88';
-    sctx.shadowBlur = 8;
-    sctx.fillText('♪', sw / 2, sh / 2 - 20);
-
-    // Draw current line if available
-    const currentLine = document.getElementById('lyrics-current-line')?.textContent || '';
-    if (currentLine) {
-      sctx.font = '14px "JetBrains Mono"';
-      sctx.fillText(currentLine, sw / 2, sh / 2 + 20);
-    }
-    sctx.shadowBlur = 0;
-  } else if (cascadeMode === 'audio' || forceViz) {
-    // Audio viz mode - always use ambience for preview
-    drawAmbience(sctx, sw, sh);
-  } else {
+  if (cascadeMode === 'idle') {
     // Idle/ascii mode - dark background with [ASCII_VHS]
     sctx.fillStyle = '#010402';
     sctx.fillRect(0, 0, sw, sh);
@@ -1314,6 +1290,9 @@ function drawAudioViz() {
     sctx.shadowBlur = 8;
     sctx.fillText('[ASCII_VHS]', sw / 2, sh / 2);
     sctx.shadowBlur = 0;
+  } else {
+    // Music playing (lyrics OR audio) -> always ambience
+    drawAmbience(sctx, sw, sh);
   }
 
   const mw = miniCanvas.clientWidth;
