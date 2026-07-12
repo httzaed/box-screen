@@ -13,7 +13,7 @@ WIDTH, HEIGHT = 1920, 462
 BG = (13, 10, 25)
 
 # ── Visualization Mode ───────────────────────────────────────────────────────────
-_VIZ_MODE = "ambience"  # défaut : ambience — "spectrum"/"waveform" disponibles
+_VIZ_MODE = "spectrum"  # défaut panel : spectrum — ambience réservé au dashboard web
 
 def set_viz_mode(mode: str):
     """Set the visualization mode."""

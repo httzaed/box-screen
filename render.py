@@ -839,17 +839,17 @@ def _draw_lyrics_hud(img: Image.Image) -> Image.Image:
 
 
 def _get_lyrics_cascade_mode() -> str:
-    """Cascade du layout lyrics : lyrics -> audio (viz) -> terminal."""
+    """Cascade du layout lyrics : lyrics -> audio (viz) -> idle."""
     try:
         import lyrics_source as _ls
         state = _ls.get_state()
         if state is None:
-            return "terminal"
+            return "idle"
         if get_force_viz() or not state.get("lines"):
             return "audio"
         return "lyrics"
     except ImportError:
-        return "terminal"
+        return "idle"
 
 
 def build_frame() -> Image.Image:
@@ -903,8 +903,9 @@ def build_frame() -> Image.Image:
         if cascade_mode == "audio":
             import render_audio_viz
             return render_audio_viz.build_frame(bg=img)
-        if cascade_mode == "terminal":
-            return _draw_terminal_hud(img, gauges, now)
+        if cascade_mode == "idle":
+            import render_ascii
+            return render_ascii.build_frame(bg=img)
         return _draw_lyrics_hud(img)
 
     if LAYOUT == "clock":
