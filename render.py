@@ -845,7 +845,7 @@ def _get_lyrics_cascade_mode() -> str:
         state = _ls.get_state()
         if state is None:
             return "idle"
-        if get_force_viz() or not state.get("lines"):
+        if get_force_viz() or len(state.get("lines", [])) == 0:
             return "audio"
         return "lyrics"
     except ImportError:
