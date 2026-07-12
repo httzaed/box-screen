@@ -665,8 +665,8 @@ if __name__ == "__main__":
     if "--auto" in _sys.argv:
         _auto_enabled = True
         print("[AUTO] Mode auto activé")
-        # Bypass state loading for auto mode
-        _mode_idx, _hud_idx = 0, 0  # Start at first mode, will be overridden by auto
+        # Bypass state loading for auto mode - force audio+lyrics pour la cascade
+        _mode_idx, _hud_idx = MODES.index("audio"), HUD_STYLES.index("lyrics")
 
     print("Démarrage du panel...")
     _panel = Panel()
