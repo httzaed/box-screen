@@ -845,9 +845,19 @@ def _get_lyrics_cascade_mode() -> str:
         state = _ls.get_state()
         if state is None:
             return "idle"
-        if get_force_viz() or len(state.get("lines", [])) == 0:
-            return "audio"
-        return "lyrics"
+        lines = state.get("lines", [])
+        force = get_force_viz()
+        result = "lyrics"
+        if force or len(lines) == 0:
+            result = "audio"
+        # Log debug (une fois par seconde max pour éviter spam)
+        import time
+        if not hasattr(_get_lyrics_cascade_mode, '_last_log'):
+            _get_lyrics_cascade_mode._last_log = 0
+        if time.time() - _get_lyrics_cascade_mode._last_log > 1:
+            print(f"[CASCADE] mode={result} force={force} lines={len(lines)} loading={state.get('loading', False)}")
+            _get_lyrics_cascade_mode._last_log = time.time()
+        return result
     except ImportError:
         return "idle"
 
