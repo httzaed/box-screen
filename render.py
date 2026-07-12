@@ -842,9 +842,16 @@ def _get_lyrics_cascade_mode() -> str:
     """Cascade du layout lyrics : lyrics -> audio (viz) -> idle."""
     try:
         import lyrics_source as _ls
+        import bpm_source
         state = _ls.get_state()
         if state is None:
             return "idle"
+
+        # Détection pause/silence : si niveau audio < 0.01 -> idle (ASCII)
+        audio_level = bpm_source.get_level()
+        if audio_level < 0.01:
+            return "idle"
+
         lines = state.get("lines", [])
         force = get_force_viz()
         result = "lyrics"
@@ -855,7 +862,7 @@ def _get_lyrics_cascade_mode() -> str:
         if not hasattr(_get_lyrics_cascade_mode, '_last_log'):
             _get_lyrics_cascade_mode._last_log = 0
         if time.time() - _get_lyrics_cascade_mode._last_log > 1:
-            print(f"[CASCADE] mode={result} force={force} lines={len(lines)} loading={state.get('loading', False)}")
+            print(f"[CASCADE] mode={result} force={force} lines={len(lines)} loading={state.get('loading', False)} level={audio_level:.3f}")
             _get_lyrics_cascade_mode._last_log = time.time()
         return result
     except ImportError:
