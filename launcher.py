@@ -407,10 +407,13 @@ def _blank_loop(stop):
 # ══════════════════════════════════════════════════════════════════════════
 
 def _audio_loop(stop):
-    """Pure audio visualizer mode - no background, just the 4 panels."""
+    """Audio mode avec cascade : lyrics -> audio viz -> idle."""
     while not stop.is_set():
         t0 = time.time()
-        _panel.send_image(render_audio_viz.build_frame(), fit=False)
+        # Utilise la cascade via render.build_frame() avec LAYOUT="lyrics"
+        render.LAYOUT = "lyrics"
+        render.background_override = _BLACK_BG
+        _panel.send_image(render.build_frame(), fit=False)
         time.sleep(max(0, 1/30 - (time.time()-t0)))  # 30 FPS
 
 
