@@ -69,6 +69,7 @@ _LED_COLORS = {
     "ascii_vhs": (ASCII_START, ASCII_END),         # violet -> orange
     "image":     ((0, 162, 216), (0, 216, 54)),    # cyan ciel -> vert jungle
     "video":     ((255, 20, 100), (50, 100, 220)), # rose vif -> bleu acier
+    "audio":     (ASCII_END, ASCII_END),            # orange rougeâtre (ASCII_END)
     "blank":     ((0, 0, 0), (0, 0, 0)),           # LEDs éteintes
 }
 
@@ -138,21 +139,28 @@ def _fit_crop(img: Image.Image) -> Image.Image:
 
 def _send(img: Image.Image):
     """Envoie une frame en appliquant le HUD actif."""
-    hud = HUD_STYLES[_hud_idx]
-    if hud == "tiles":
-        _panel.send_image(render_tiles.build_frame(bg=img), fit=False)
-    elif hud == "matrix":
-        _panel.send_image(render_matrix.build_frame(bg=img), fit=False)
-    elif hud == "audio_viz":
-        _panel.send_image(render_audio_viz.build_frame(bg=img), fit=False)
-    elif hud == "blank":
-        render.LAYOUT = "full"
-        render.background_override = Image.new("RGB", (WIDTH, HEIGHT), (0, 0, 0))
-        _panel.send_image(render.build_frame(), fit=False)
-    else:
-        render.LAYOUT = hud
-        render.background_override = img
-        _panel.send_image(render.build_frame(), fit=False)
+    try:
+        # Obtenir le HUD actuel de manière thread-safe
+        with _mode_lock:
+            hud = HUD_STYLES[_hud_idx]
+
+        if hud == "tiles":
+            _panel.send_image(render_tiles.build_frame(bg=img), fit=False)
+        elif hud == "matrix":
+            _panel.send_image(render_matrix.build_frame(bg=img), fit=False)
+        elif hud == "audio_viz":
+            _panel.send_image(render_audio_viz.build_frame(bg=img), fit=False)
+        elif hud == "blank":
+            render.LAYOUT = "full"
+            render.background_override = Image.new("RGB", (WIDTH, HEIGHT), (0, 0, 0))
+            _panel.send_image(render.build_frame(), fit=False)
+        else:
+            render.LAYOUT = hud
+            render.background_override = img
+            _panel.send_image(render.build_frame(), fit=False)
+    except Exception as e:
+        print(f"[SEND] Erreur envoi frame: {e}")
+        # Ne pas crasher, juste logger l'erreur
 
 def _mono(size):
     candidates = [
@@ -288,7 +296,10 @@ def _image_loop(stop):
     while not stop.is_set():
         t0  = time.time()
         now = _dt.datetime.now()
-        hud = HUD_STYLES[_hud_idx]
+
+        # Obtenir le HUD actuel de manière thread-safe
+        with _mode_lock:
+            hud = HUD_STYLES[_hud_idx]
 
         # audio_viz et lyrics: toujours refresh (real-time)
         # autres: refresh si seconde écoulée OU si le HUD a changé
@@ -344,7 +355,10 @@ def _blank_loop(stop):
     while not stop.is_set():
         t0  = time.time()
         now = _dt.datetime.now()
-        hud = HUD_STYLES[_hud_idx]
+
+        # Obtenir le HUD actuel de manière thread-safe
+        with _mode_lock:
+            hud = HUD_STYLES[_hud_idx]
 
         # audio_viz et lyrics: toujours refresh (real-time)
         # autres: refresh si seconde écoulée OU si le HUD a changé
@@ -414,16 +428,22 @@ _current_thread = None
 
 def _start_mode(idx):
     global _current_stop, _current_thread, _led_stop, _led_thread
+
+    # Arrêter le thread actuel plus proprement
     if _current_stop:
         _current_stop.set()
     if _current_thread:
-        _current_thread.join(timeout=2)
+        _current_thread.join(timeout=3)
+        if _current_thread.is_alive():
+            print(f"[MODE] Thread actif encore en cours, forçage arrêt")
 
     # Arrêter l'ancien thread LED
     if _led_stop:
         _led_stop.set()
     if _led_thread:
-        _led_thread.join(timeout=2)
+        _led_thread.join(timeout=3)
+        if _led_thread.is_alive():
+            print(f"[LED] Thread LED encore en cours, forçage arrêt")
 
     name = MODES[idx % len(MODES)]
     stop = threading.Event()
@@ -433,16 +453,20 @@ def _start_mode(idx):
     t.start()
 
     # Démarrer le thread LED correspondant
-    print(f"[LED] _LED={_LED}")
     if _LED:
-        fixed = _LED_COLORS[name]
-        get_c = (lambda: fixed) if fixed else _palette_colors
+        # Obtenir les couleurs LED pour ce mode
+        if name in _LED_COLORS and _LED_COLORS[name]:
+            fixed = _LED_COLORS[name]
+            get_c = lambda: fixed
+        else:
+            get_c = _palette_colors
+
         ls = threading.Event()
         lt = threading.Thread(target=_led.run, args=(ls, get_c), daemon=True)
         _led_stop   = ls
         _led_thread = lt
         lt.start()
-        print(f"[LED] thread démarré pour {name}")
+        print(f"[LED] Thread démarré pour {name}")
 
     print(f"  >  mode -> {name}")
 
@@ -455,15 +479,18 @@ def _switch(delta):
 
 def _switch_hud(delta):
     global _hud_idx
-    _hud_idx = (_hud_idx + delta) % len(HUD_STYLES)
-    # Amorce les compteurs si on arrive sur tiles/matrix
-    hud = HUD_STYLES[_hud_idx]
-    if hud == "tiles":
-        render_tiles._rates()
-    elif hud == "matrix":
-        render_matrix._rates()
-    _save_state()
-    print(f"  >  hud  -> {hud}")
+    with _mode_lock:  # Protéger l'accès à _hud_idx
+        _hud_idx = (_hud_idx + delta) % len(HUD_STYLES)
+        hud = HUD_STYLES[_hud_idx]
+
+        # Amorce les compteurs si on arrive sur tiles/matrix
+        if hud == "tiles":
+            render_tiles._rates()
+        elif hud == "matrix":
+            render_matrix._rates()
+
+        _save_state()
+        print(f"  >  hud  -> {hud}")
 
 
 def _resync_lyrics():
@@ -490,20 +517,40 @@ def _apply_auto_mode(mode_name, hud_name, led_cfg):
     """Applique le mode, HUD et config LED déterminés par l'auto-mode."""
     global _mode_idx, _hud_idx
 
-    print(f"[AUTO DEBUG] apply_auto_mode: mode={mode_name}, hud={hud_name}")
+    print(f"[AUTO] apply_auto_mode: mode={mode_name}, hud={hud_name}")
+
+    # Mapping des noms de modes depuis auto_mode.py vers MODES locaux
+    MODE_MAPPING = {
+        # Modes directs
+        "ascii_vhs": "ascii_vhs",
+        "video": "video",
+        "image": "image",
+        "blank": "blank",
+        # Modes complexes → mapping intelligent
+        "video+lyrics": "video",      # vidéo avec HUD lyrics
+        "image+lyrics": "image",      # image avec HUD lyrics
+        "lyrics_cascade": "audio",    # audio avec HUD intelligent
+        "lyrics": "audio",            # audio avec HUD lyrics
+        "audio_viz": "audio",         # mode audio visualizer
+        "ascii_hud": "ascii_vhs",     # ASCII mode
+        "audio": "audio",             # mode audio
+        "idle": "blank",              # idle → blank
+        "manual": "ascii_vhs",        # manual → ASCII
+    }
 
     # Appliquer le mode
-    if mode_name in MODES:
-        target_idx = MODES.index(mode_name)
+    mapped_mode = MODE_MAPPING.get(mode_name, mode_name)
+    if mapped_mode in MODES:
+        target_idx = MODES.index(mapped_mode)
         if target_idx != _mode_idx:
             with _mode_lock:
                 _mode_idx = target_idx
                 _start_mode(_mode_idx)
-            print(f"[AUTO] Mode → {mode_name}")
+            print(f"[AUTO] Mode → {mapped_mode} (from {mode_name})")
         else:
-            print(f"[AUTO DEBUG] Mode {mode_name} déjà actif (idx={target_idx})")
+            print(f"[AUTO] Mode {mapped_mode} déjà actif")
     else:
-        print(f"[AUTO DEBUG] Mode {mode_name} PAS dans MODES: {MODES}")
+        print(f"[AUTO] Mode {mode_name} (mapped to {mapped_mode}) PAS dans MODES: {MODES}")
 
     # Appliquer le HUD
     if hud_name and hud_name in HUD_STYLES:
@@ -516,9 +563,9 @@ def _apply_auto_mode(mode_name, hud_name, led_cfg):
                 render_matrix._rates()
             print(f"[AUTO] HUD → {hud_name} (idx={target_idx})")
         else:
-            print(f"[AUTO DEBUG] HUD {hud_name} déjà actif (idx={target_idx})")
+            print(f"[AUTO] HUD {hud_name} déjà actif")
     else:
-        print(f"[AUTO DEBUG] HUD {hud_name} PAS dans HUD_STYLES: {HUD_STYLES}")
+        print(f"[AUTO] HUD {hud_name} pas dans HUD_STYLES, utilisation du défaut")
 
     # Appliquer la config LED
     if _LED and led_cfg:
@@ -526,11 +573,24 @@ def _apply_auto_mode(mode_name, hud_name, led_cfg):
             import led_fans as _lf_mod
             from control_server import _apply_led
 
-            if "case" in led_cfg:
-                _apply_led(_lf_mod, "case_mode", led_cfg["case"])
-            if "fans" in led_cfg:
-                _apply_led(_lf_mod, "fan_mode", led_cfg["fans"])
-            print(f"[AUTO] LED → case={led_cfg.get('case', '?')}, fans={led_cfg.get('fans', '?')}")
+            # Accès direct aux attributs du dataclass LEDConfig
+            case_mode = led_cfg.case_mode
+            fan_mode = led_cfg.fan_mode
+            case_color = led_cfg.case_color
+            fan_color = led_cfg.fan_color
+
+            if case_mode:
+                _apply_led(_lf_mod, "case_mode", case_mode)
+            if fan_mode:
+                _apply_led(_lf_mod, "fan_mode", fan_mode)
+
+            # Appliquer les couleurs si présentes
+            if case_color:
+                _apply_led(_lf_mod, "case_color", case_color)
+            if fan_color:
+                _apply_led(_lf_mod, "fan_color", fan_color)
+
+            print(f"[AUTO] LED → case={case_mode}, fans={fan_mode}")
         except Exception as e:
             print(f"[AUTO] Erreur LED: {e}")
 
@@ -548,7 +608,7 @@ def _auto_tick():
         if _last_context is None or auto_mode.should_reevaluate(_last_context, context):
             (mode, hud), led_cfg = auto_mode.determine_mode(context)
             # N'appliquer que si quelque chose a changé
-            current_state = (mode, hud, led_cfg.get("case"), led_cfg.get("fans"))
+            current_state = (mode, hud, led_cfg.case_mode, led_cfg.fan_mode)
             if current_state != _last_applied_mode:
                 _apply_auto_mode(mode, hud, led_cfg)
                 _last_applied_mode = current_state
@@ -561,7 +621,7 @@ def _auto_tick():
             if context.get("has_lyrics") != _last_context.get("has_lyrics"):
                 (mode, hud), led_cfg = auto_mode.determine_mode(context)
                 # N'appliquer que si quelque chose a changé
-                current_state = (mode, hud, led_cfg.get("case"), led_cfg.get("fans"))
+                current_state = (mode, hud, led_cfg.case_mode, led_cfg.fan_mode)
                 if current_state != _last_applied_mode:
                     _apply_auto_mode(mode, hud, led_cfg)
                     _last_applied_mode = current_state
@@ -644,13 +704,20 @@ if __name__ == "__main__":
 
     def _get_state():
         ts, seq = _bpm.get_beat_event()
-        return {
+        state = {
             "mode":     MODES[_mode_idx],
             "hud":      HUD_STYLES[_hud_idx],
             "bpm":      _bpm.get_bpm(),
             "level":    _bpm.get_level(),
             "beat_seq": seq,
         }
+        # Ajouter force_viz si disponible
+        try:
+            import render
+            state["force_viz"] = render.get_force_viz()
+        except:
+            state["force_viz"] = False
+        return state
     _set_led_fn = None
     if _LED:
         try:

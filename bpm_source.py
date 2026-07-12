@@ -11,7 +11,7 @@ bpm_source.py — Music-reactive DSP engine
 Expose :
   start() / stop()
   get_bpm()   -> float | None
-  get_level() -> float 0-1  ← énergie basse fréquence normalisée (pour brightness)
+  get_level() -> float 0-1  <- énergie basse fréquence normalisée (pour brightness)
   get_beat_event() -> (ts, seq)
 
 Dépendances : pip install PyAudioWPatch sounddevice librosa numpy requests pywin32
@@ -65,7 +65,8 @@ _running     = False
 _thread      = None
 
 # ── Visualisation data ────────────────────────────────────────────────────────
-_spectrum       = [0.0] * 64      # 64-band spectrum for visualization
+_spectrum       = [0.0] * 128     # 128-band spectrum for visualization (more for 96 bars display)
+_spectrum_smooth = [0.0] * 128   # Smoothed spectrum for temporal filtering
 _bass_viz       = 0.0              # Bass level for viz
 _mid_viz        = 0.0              # Mid level for viz
 _treble_viz     = 0.0              # Treble level for viz
@@ -76,6 +77,10 @@ _band_hist      = {               # Band history for graphs
     "mid": collections.deque([0.0] * 60, maxlen=60),
     "treble": collections.deque([0.0] * 60, maxlen=60),
 }
+
+# Spectrum smoothing coefficients
+SPEC_SMOOTH_ATTACK = 0.3   # Fast attack for transients
+SPEC_SMOOTH_DECAY = 0.85   # Slow decay for smoothness
 
 
 def get_bpm() -> float | None:
@@ -108,7 +113,7 @@ def get_viz_spectrum() -> list:
 def get_viz_bands() -> tuple:
     """Get (bass, mid, treble) levels for visualization (0-1 each)."""
     with _lock:
-        return _bass_viz, _mid_viz, _treble_viz
+        return float(_bass_viz), float(_mid_viz), float(_treble_viz)
 
 
 def get_viz_waveform() -> list:
@@ -127,7 +132,22 @@ def get_viz_band_history() -> dict:
         }
 
 
-# ── Lookup titre → BPM ───────────────────────────────────────────────────────
+def _get_audio_data() -> dict:
+    """Get real-time audio visualization data."""
+    try:
+        return {
+            'spectrum': get_viz_spectrum(),
+            'waveform': get_viz_waveform(),
+            'bands': get_viz_bands(),
+            'bpm': get_bpm(),
+            'level': get_level(),
+            'beat': get_beat_event()
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+# ── Lookup titre -> BPM ───────────────────────────────────────────────────────
 # Blacklist des sources audio à ignorer
 _BLACKLISTED_SOURCES = {
     "twitch",
@@ -157,7 +177,7 @@ def _get_now_playing():
                 if any(bad in source_app for bad in _BLACKLISTED_SOURCES):
                     print(f"[BPM] Source blacklistée: {source_app}")
                     return None, None
-            except:
+            except Exception:
                 pass
 
             props = await sess.try_get_media_properties_async()
@@ -289,24 +309,34 @@ def _open_stream(queue_out, running_flag):
         pa = pyaudio.PyAudio()
         wasapi_idx = pa.get_host_api_info_by_type(pyaudio.paWASAPI)["index"]
 
-        # Collecte tous les loopback devices
+        # Collecte tous les loopback devices (exclut Discord, etc.)
         loopbacks = []
+        # BLACKLIST: apps à exclure (noms de loopback devices)
+        EXCLUDE = ["discord", "vb-cable", "wave link"]  # Discord, VB-Cable virtuels, etc.
         for i in range(pa.get_host_api_info_by_index(wasapi_idx)["deviceCount"]):
             dev = pa.get_device_info_by_host_api_device_index(wasapi_idx, i)
+            dev_name_lower = dev.get("name", "").lower()
             if dev.get("isLoopbackDevice", False) and dev["maxInputChannels"] > 0:
+                # Exclure les devices blacklistés
+                if any(excluded in dev_name_lower for excluded in EXCLUDE):
+                    print(f"[BPM] loopback exclu (blacklist): {dev['name']}")
+                    continue
                 loopbacks.append(dev)
-                print(f"[BPM] loopback trouvé: {dev['name']}")
+                print(f"[BPM] [OK] loopback trouve: {dev['name']}")
+
+        print(f"[BPM] Total loopback devices: {len(loopbacks)}")
 
         if not loopbacks:
             raise RuntimeError("Aucun loopback trouvé")
 
-        # Priorité dans l'ordre : Speakers > HD Audio > Main 1/2 > premier dispo
-        PREFER = ["speakers", "hd audio", "main 1/2"]
+        # Priorité dans l'ordre : Bluetooth/AirPods/Bose > Speakers > HD Audio > Main 1/2 > premier dispo
+        PREFER = ["airpods", "bluetooth", "bose", "speakers", "hd audio", "main 1/2", "realtek", "nahimic"]
         loopback_dev = loopbacks[0]
         for pref in PREFER:
             match = next((d for d in loopbacks if pref in d["name"].lower()), None)
             if match:
                 loopback_dev = match
+                print(f"[BPM] Priorité: match '{pref}' -> {loopback_dev['name']}")
                 break
 
         rate   = int(loopback_dev["defaultSampleRate"])
@@ -378,6 +408,7 @@ def _detector_loop():
     prev_mag   = None
     flux_buf   = collections.deque(maxlen=40)
     last_onset = 0.0
+    spectrum_peak_hist = collections.deque(maxlen=NORM_HISTORY)  # Peak history for spectrum normalization
 
     # Buffer librosa (BPM)
     buf_size   = int(CHUNK_SEC * CAPTURE_RATE)
@@ -442,27 +473,68 @@ def _detector_loop():
         with _lock:
             _level = min(1.0, norm)
 
-            # Update spectrum (64 bands, log scale)
+            # Update spectrum (128 bands, log scale)
             if len(mag) >= 64:
-                # Logarithmic binning
                 bins = []
-                for i in range(64):
-                    # Log scale from index 2 to len(mag)-1
-                    lo_idx = int(2 + (len(mag) - 3) ** (i / 63))
-                    hi_idx = int(2 + (len(mag) - 3) ** ((i + 1) / 63))
+                n_bands = 128
+
+                # True logarithmic frequency spacing
+                low_idx = 3  # Skip DC and ultra-low
+                high_idx = len(mag) - 1
+
+                for i in range(n_bands):
+                    # Logarithmic mapping: each band covers a constant ratio of frequencies
+                    t0 = i / n_bands
+                    t1 = (i + 1) / n_bands
+
+                    # Log scale from low_idx to high_idx
+                    lo_idx = int(low_idx * (high_idx / low_idx) ** t0)
+                    hi_idx = int(low_idx * (high_idx / low_idx) ** t1)
+
+                    # Ensure at least 1 bin per band
+                    if hi_idx <= lo_idx:
+                        hi_idx = lo_idx + 1
                     if hi_idx > len(mag):
                         hi_idx = len(mag)
-                    if lo_idx < hi_idx:
-                        bin_val = np.mean(mag[lo_idx:hi_idx])
-                        bins.append(min(1.0, bin_val * 20))
+
+                    bin_val = float(np.mean(mag[lo_idx:hi_idx]))
+                    bins.append(bin_val)
+
+                # Track global spectrum peak for adaptive normalization
+                max_bin = float(np.max(bins)) if bins else 0.001
+                spectrum_peak_hist.append(max_bin)
+
+                if len(spectrum_peak_hist) >= 10:
+                    # Use percentile 95 to avoid outliers
+                    peak = float(np.percentile(spectrum_peak_hist, NORM_PCT))
+                else:
+                    peak = max_bin
+
+                # Simple normalization with fixed gain
+                # Apply frequency-dependent gain (boost highs)
+                norm_bins = []
+                for i, b in enumerate(bins):
+                    freq_gain = 1.0 + (i / n_bands) * 1.5  # Slight boost for highs
+                    norm_val = (b / max(peak, MIN_SIGNAL)) * 3.0 * freq_gain
+                    norm_bins.append(min(1.0, norm_val))
+
+                # Apply temporal smoothing
+                for i in range(n_bands):
+                    current = norm_bins[i]
+                    prev = _spectrum_smooth[i]
+
+                    if current > prev:
+                        _spectrum_smooth[i] = SPEC_SMOOTH_ATTACK * prev + (1 - SPEC_SMOOTH_ATTACK) * current
                     else:
-                        bins.append(0.0)
-                _spectrum[:] = bins
+                        _spectrum_smooth[i] = SPEC_SMOOTH_DECAY * prev + (1 - SPEC_SMOOTH_DECAY) * current
+
+                _spectrum[:] = _spectrum_smooth
 
             # Update band levels (normalized for viz)
-            _bass_viz = min(1.0, e_bass * 100)
-            _mid_viz = min(1.0, e_mid * 80)
-            _treble_viz = min(1.0, e_treble * 60)
+            # Gains augmentés car les énergies brutes sont très faibles
+            _bass_viz = min(1.0, e_bass * 500)
+            _mid_viz = min(1.0, e_mid * 400)
+            _treble_viz = min(1.0, e_treble * 300)
 
             # Update band history
             _band_hist["bass"].append(_bass_viz)
@@ -508,7 +580,7 @@ def _detector_loop():
                 continue
             last_bpm_update = now
 
-            # Titre → lookup BPM
+            # Titre -> lookup BPM
             now_playing = _title_result[0]
             if now_playing:
                 title = f"{now_playing[0]}|{now_playing[1]}"
@@ -520,7 +592,7 @@ def _detector_loop():
                     mb_bpm  = None
                     result = _lookup_bpm(artist, song)
                     if result:
-                        print(f"[BPM] Spotify → {result:.0f} BPM")
+                        print(f"[BPM] Spotify -> {result:.0f} BPM")
                         mb_bpm = ema_bpm = result
 
             if mb_bpm:

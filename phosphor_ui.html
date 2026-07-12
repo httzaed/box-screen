@@ -1,0 +1,2066 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Box Screen - Phosphor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=VT323&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #020803; }
+  ::selection { background: #2bff88; color: #021006; }
+
+  @keyframes scan {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100%); }
+  }
+
+  @keyframes flick {
+    0%,96%,100% { opacity: 1; }
+    97% { opacity: .85; }
+    98.5% { opacity: .95; }
+  }
+
+  @keyframes blink {
+    0%,49% { opacity: 1; }
+    50%,100% { opacity: 0; }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  input[type=range] {
+    -webkit-appearance:none;
+    appearance:none;
+    height:4px;
+    border-radius:2px;
+    outline:none;
+    cursor:pointer;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none;
+    width:13px;
+    height:13px;
+    border-radius:2px;
+    background:#2bff88;
+    box-shadow:0 0 8px #2bff88;
+    cursor:pointer;
+  }
+
+  input[type=range]::-moz-range-thumb {
+    width:13px;
+    height:13px;
+    border-radius:2px;
+    border:none;
+    background:#2bff88;
+    box-shadow:0 0 8px #2bff88;
+    cursor:pointer;
+  }
+
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb { background:#0f3a24; border-radius:4px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+
+  .pnl {
+    border:1px solid var(--line);
+    border-radius:5px;
+    background:var(--pan);
+  }
+
+  .lbl {
+    font-size:11px;
+    color:var(--dim);
+    letter-spacing:.04em;
+  }
+
+  button {
+    font-family:'JetBrains Mono',monospace;
+  }
+
+  .asc {
+    margin:0;
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    line-height:12px;
+    letter-spacing:0;
+    color:var(--grn);
+    text-shadow:0 0 6px rgba(43,255,136,.5);
+    white-space:pre;
+  }
+
+  .face {
+    position:absolute;
+    left:50%;
+    top:50%;
+  }
+
+  .fanx {
+    cursor:pointer;
+    color:#37ff8b;
+    text-shadow:0 0 8px rgba(43,255,136,.85);
+  }
+
+  .fanx.off {
+    color:#0c4a2b;
+    text-shadow:none;
+  }
+
+  body {
+    --grn:#2bff88;
+    --mid:#19c46a;
+    --dim:#13864c;
+    --line:#0f3a24;
+    --pan:#04140c;
+    --bg:#020803;
+    --amb:#ffc24d;
+    position:relative;
+    min-height:100vh;
+    background:radial-gradient(120% 80% at 50% -10%,#062213 0%,#020803 55%);
+    font-family:'JetBrains Mono',monospace;
+    color:var(--grn);
+    padding:22px 26px 30px;
+    overflow-x:hidden;
+    animation:flick 9s infinite;
+  }
+
+  /* CRT overlays */
+  .crt-overlay {
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    z-index:60;
+    background:repeating-linear-gradient(0deg,rgba(43,255,136,.035) 0,rgba(43,255,136,.035) 1px,transparent 2px,transparent 4px);
+  }
+
+  .crt-vignette {
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    z-index:61;
+    box-shadow:inset 0 0 180px rgba(0,0,0,.85), inset 0 0 40px rgba(0,0,0,.5);
+  }
+
+  .crt-scan {
+    position:fixed;
+    left:0;
+    right:0;
+    height:120px;
+    pointer-events:none;
+    z-index:59;
+    background:linear-gradient(180deg,rgba(43,255,136,.06),transparent);
+    animation:scan 7.5s linear infinite;
+  }
+
+  .main-container {
+    position:relative;
+    z-index:10;
+    max-width:1500px;
+    margin:0 auto;
+  }
+
+  /* Mode buttons */
+  .mode-btn {
+    cursor:pointer;
+    font-size:13px;
+    padding:9px 16px;
+    border:1px solid var(--line);
+    background:transparent;
+    color:var(--dim);
+    border-radius:4px;
+    transition: all 0.15s;
+  }
+
+  .mode-btn:hover {
+    border-color:var(--mid);
+    color:var(--mid);
+  }
+
+  .mode-btn.active {
+    border:1px solid var(--grn);
+    background:var(--grn);
+    color:#021006;
+    font-weight:700;
+  }
+
+  /* Transport buttons */
+  .transport-btn {
+    cursor:pointer;
+    font-size:13px;
+    background:none;
+    border:1px solid var(--line);
+    color:var(--grn);
+    border-radius:4px;
+    padding:6px 11px;
+    transition: all 0.15s;
+  }
+
+  .transport-btn:hover {
+    border-color:var(--grn);
+    background:rgba(43,255,136,.1);
+  }
+
+  .transport-btn.primary {
+    background:var(--grn);
+    border:1px solid var(--grn);
+    color:#021006;
+    font-weight:700;
+  }
+
+  .transport-btn.primary:hover {
+    background:var(--mid);
+    border-color:var(--mid);
+  }
+
+  /* LED mode buttons */
+  .led-mode-btn {
+    cursor:pointer;
+    flex:1;
+    font-size:11px;
+    padding:6px;
+    border:1px solid var(--line);
+    background:transparent;
+    color:var(--dim);
+    border-radius:3px;
+    transition: all 0.15s;
+  }
+
+  .led-mode-btn:hover {
+    border-color:var(--mid);
+    color:var(--mid);
+  }
+
+  .led-mode-btn.active {
+    border:1px solid var(--grn);
+    background:rgba(43,255,136,.12);
+    color:var(--grn);
+  }
+
+  /* Zone selection buttons */
+  .zone-btn {
+    flex:1;
+    font-size:10px;
+    border:1px solid var(--line);
+    background:transparent;
+    color:var(--dim);
+    cursor:pointer;
+    border-radius:3px;
+    padding:4px 8px;
+  }
+  .zone-btn:hover {
+    border-color:var(--mid);
+    color:var(--mid);
+  }
+  .zone-btn.active {
+    border-color:var(--grn);
+    background:rgba(43,255,136,.12);
+    color:var(--grn);
+  }
+
+  /* Scene buttons */
+  .scene-btn {
+    cursor:pointer;
+    padding:9px;
+    border:1px solid var(--line);
+    background:transparent;
+    color:var(--dim);
+    font-size:12px;
+    border-radius:4px;
+    transition: all 0.15s;
+  }
+
+  .scene-btn:hover {
+    border-color:var(--mid);
+    color:var(--mid);
+  }
+
+  .scene-btn.active {
+    border:1px solid var(--grn);
+    background:var(--grn);
+    color:#021006;
+    font-weight:700;
+  }
+
+  /* Toggle buttons */
+  .toggle-btn {
+    cursor:pointer;
+    text-align:left;
+    background:none;
+    border:none;
+    color:var(--dim);
+    font-size:13px;
+    padding:4px 0;
+    transition: color 0.15s;
+  }
+
+  .toggle-btn:hover {
+    color:var(--mid);
+  }
+
+  .toggle-btn.active {
+    color:var(--grn);
+  }
+
+  /* Color swatch */
+  .color-swatch {
+    width:26px;
+    height:26px;
+    border-radius:4px;
+    cursor:pointer;
+    transition: transform 0.15s;
+  }
+
+  .color-swatch:hover {
+    transform:scale(1.1);
+  }
+
+  .color-swatch.rainbow {
+    background:linear-gradient(90deg,#ff2d55,#ffe600,#37ff8b,#00e1ff,#c44cff);
+  }
+
+  .color-swatch.active {
+    box-shadow:0 0 0 2px var(--grn);
+  }
+
+  /* Console log */
+  #log {
+    height:96px;
+    overflow:auto;
+    font-size:12px;
+    line-height:1.7;
+    color:var(--mid);
+  }
+
+  #log > div {
+    padding:2px 0;
+  }
+
+  /* Canvas */
+  #screen {
+    display:block;
+    width:100%;
+    height:280px;
+  }
+
+  #mini {
+    display:block;
+    width:100%;
+    height:100%;
+  }
+
+  /* Save button */
+  .save-btn {
+    cursor:pointer;
+    font-size:11px;
+    color:var(--grn);
+    background:none;
+    border:1px solid var(--grn);
+    border-radius:3px;
+    padding:3px 9px;
+    transition: all 0.15s;
+  }
+
+  .save-btn:hover {
+    background:rgba(43,255,136,.1);
+  }
+
+  /* Input styling */
+  input[type="text"], input[type="search"], select {
+    background:#010402;
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:8px 11px;
+    color:var(--grn);
+    font-family:'JetBrains Mono';
+    font-size:12px;
+    outline:none;
+  }
+
+  input[type="text"]:focus, input[type="search"]:focus, select:focus {
+    border-color:var(--grn);
+  }
+
+  /* 3D case wrapper */
+  #pc3dwrap {
+    height:300px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+    perspective:860px;
+    cursor:grab;
+    touch-action:none;
+    overflow:hidden;
+  }
+
+  #pc3dwrap.grabbing {
+    cursor:grabbing;
+  }
+
+  /* Slider values */
+  .slider-val {
+    width:36px;
+    text-align:right;
+    font-size:12px;
+    color:var(--grn);
+  }
+
+  /* Connection status */
+  #conn.on { color:var(--grn); }
+  #conn.off { color:var(--amb); }
+
+  /* Responsive */
+  @media (max-width: 1200px) {
+    .controls-grid {
+      grid-template-columns:1fr 1fr !important;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .controls-grid {
+      grid-template-columns:1fr !important;
+    }
+  }
+
+  /* Hero grid responsive */
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 16px;
+  }
+
+  @media (max-width: 900px) {
+    .hero-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+</style>
+</head>
+<body>
+
+<!-- CRT overlays -->
+<div class="crt-overlay"></div>
+<div class="crt-vignette"></div>
+<div class="crt-scan"></div>
+
+<div class="main-container">
+
+  <!-- ===== header ===== -->
+  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px;">
+    <div style="display:flex; align-items:baseline; gap:16px;">
+      <pre style="margin:0; font-size:13px; line-height:1.15; color:var(--grn); text-shadow:0 0 10px rgba(43,255,136,.5);">┌─[ TROFEO_VISION ]─┐
+│ 9.16 · 1920×462  │
+└───────────────────┘</pre>
+    </div>
+    <div style="display:flex; align-items:center; gap:22px; font-size:12px; color:var(--dim);">
+      <span>[ <span id="conn" class="on">●&nbsp;ONLINE</span> ]</span>
+      <span id="hostip">--</span>
+      <span>CPU <span id="cputemp" style="color:var(--amb);">--</span></span>
+      <span>GPU <span id="gputemp" style="color:var(--grn);">--</span></span>
+      <span>FPS <span id="fps" style="color:var(--grn);">--</span></span>
+      <span style="color:var(--grn); font-size:14px;" id="clock">--:--:--</span>
+    </div>
+  </div>
+
+  <!-- ===== mode command bar ===== -->
+  <div data-modegroup style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+    <button class="mode-btn" data-mode="ascii_vhs">[ ] ascii_vhs</button>
+    <button class="mode-btn" data-mode="video">[ ] video</button>
+    <button class="mode-btn" data-mode="image">[ ] image</button>
+    <button class="mode-btn" data-mode="audio">[ ] audio_viz</button>
+    <button class="mode-btn" data-mode="blank">[ ] blank</button>
+  </div>
+
+  <!-- ===== HUD style bar ===== -->
+  <div data-hudgroup style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+    <button class="mode-btn" data-hud="full">[ ] full</button>
+    <button class="mode-btn" data-hud="terminal">[ ] terminal</button>
+    <button class="mode-btn" data-hud="clock">[ ] clock</button>
+    <button class="mode-btn" data-hud="split">[ ] split</button>
+    <button class="mode-btn" data-hud="tiles">[ ] tiles</button>
+    <button class="mode-btn" data-hud="matrix">[ ] matrix</button>
+    <button class="mode-btn" data-hud="lyrics">[ ] lyrics</button>
+    <button class="mode-btn" data-hud="audio_viz">[ ] audio_viz</button>
+  </div>
+
+  <!-- ===== Audio viz mode bar ===== -->
+  <div data-vizgroup style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+    <button class="mode-btn" data-viz="ambience">[ ] ambience</button>
+    <button class="mode-btn" data-viz="spectrum">[ ] spectrum</button>
+    <button class="mode-btn" data-viz="waveform">[ ] waveform</button>
+  </div>
+
+  <!-- ===== hero: preview + system ===== -->
+  <div class="hero-grid" style="margin-bottom:16px;">
+    <div class="pnl" style="padding:14px; position:relative;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <span class="lbl">&gt; render --screen 1920×462 --mode <span id="modename" style="color:var(--grn);">--</span></span>
+        <span class="lbl">SIGNAL <span id="signal" style="color:var(--grn);">--</span> · 48kHz/24b</span>
+      </div>
+      <div style="position:relative; border:1px solid var(--line); border-radius:4px; overflow:hidden; background:#010402;">
+        <canvas id="screen"></canvas>
+        <div style="position:absolute; left:14px; bottom:11px; font-size:13px; color:var(--grn); text-shadow:0 0 7px rgba(43,255,136,.6);">
+          ♪ <span id="trackname">No Track</span>
+        </div>
+      </div>
+      <!-- transport -->
+      <div style="display:flex; align-items:center; gap:14px; margin-top:13px;">
+        <button id="prev" class="transport-btn" disabled style="opacity:0.4;cursor:not-allowed;" title="Non disponible (pas de route backend)">⏮</button>
+        <button id="play" class="transport-btn primary">▶ PLAY</button>
+        <button id="next" class="transport-btn" disabled style="opacity:0.4;cursor:not-allowed;" title="Non disponible (pas de route backend)">⏭</button>
+        <span id="ptime" style="font-size:12px; color:var(--dim);">00:00</span>
+        <div style="flex:1; height:6px; border-radius:3px; background:var(--line); overflow:hidden;">
+          <div id="pbar" style="height:100%; width:0%; background:var(--grn); box-shadow:0 0 8px var(--grn);"></div>
+        </div>
+        <span style="font-size:12px; color:var(--dim);">00:00</span>
+      </div>
+    </div>
+
+    <!-- system panel -->
+    <div class="pnl" style="padding:14px; display:flex; flex-direction:column; gap:14px;">
+      <div class="lbl">&gt; system --monitor</div>
+      <div style="display:flex; gap:14px; align-items:flex-end; height:90px;">
+        <div style="display:flex; flex-direction:column; align-items:center; gap:5px;">
+          <div style="position:relative; width:18px; height:74px; background:var(--line); border-radius:3px; overflow:hidden; display:flex; align-items:flex-end;">
+            <div id="vuL" style="width:100%; height:0%; background:linear-gradient(0deg,var(--grn),var(--amb)); border-radius:3px;"></div>
+          </div>
+          <span class="lbl">L</span>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:5px;">
+          <div style="position:relative; width:18px; height:74px; background:var(--line); border-radius:3px; overflow:hidden; display:flex; align-items:flex-end;">
+            <div id="vuR" style="width:100%; height:0%; background:linear-gradient(0deg,var(--grn),var(--amb)); border-radius:3px;"></div>
+          </div>
+          <span class="lbl">R</span>
+        </div>
+        <div style="flex:1; height:74px; border:1px solid var(--line); border-radius:4px; overflow:hidden;">
+          <canvas id="mini"></canvas>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:7px; font-size:12px;">
+        <div style="display:flex; justify-content:space-between;">
+          <span class="lbl">BEAT</span>
+          <span><span id="bpm">0</span> BPM <span id="beatdot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--grn); box-shadow:0 0 8px var(--grn); margin-left:4px; vertical-align:middle;"></span></span>
+        </div>
+        <div style="display:flex; justify-content:space-between;">
+          <span class="lbl">PEAK</span>
+          <span style="color:var(--grn);" id="peak">-inf dB</span>
+        </div>
+        <div style="display:flex; justify-content:space-between;">
+          <span class="lbl">LATENCE</span>
+          <span id="latency" style="color:var(--grn);">--</span>
+        </div>
+        <div style="display:flex; justify-content:space-between;">
+          <span class="lbl">UPTIME</span>
+          <span id="uptime" style="color:var(--grn);">00:00:00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== controls grid ===== -->
+  <div class="controls-grid" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:16px;">
+
+    <!-- col1: LED map + color -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <div class="pnl" style="padding:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span class="lbl">&gt; led --map --3d · thermalright</span>
+          <span class="lbl" style="font-size:10px;">⟲ glisser</span>
+        </div>
+        <div id="pc3dwrap">
+          <div style="position:absolute; left:50%; bottom:28px; width:188px; height:30px; transform:translateX(-50%); background:radial-gradient(ellipse,rgba(0,0,0,.6),transparent 70%); filter:blur(7px); pointer-events:none;"></div>
+          <div id="pc3d" style="position:relative; width:132px; height:168px; transform-style:preserve-3d; transform:rotateX(-12deg) rotateY(-18deg);">
+            <!-- 3D ASCII case will be generated by JS -->
+          </div>
+        </div>
+        <div style="display:flex; gap:14px; flex-wrap:wrap; font-size:11px; margin-bottom:11px;">
+          <span style="color:#aeb6bc;">● boîtier Thermalright · verre panoramique</span>
+          <span style="color:#46d27e;">● 8 ventilos RGB</span>
+          <span style="color:#ff8a3c;">● RGB périmètre</span>
+        </div>
+        <!-- Zone selection buttons -->
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+          <button class="zone-btn active" data-zone="case">[x] CASE</button>
+          <button class="zone-btn" data-zone="fans">[ ] FANS</button>
+          <button class="zone-btn" data-zone="both">[ ] BOTH</button>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:11px;">
+          <button class="led-mode-btn active" data-led-mode="beat_pulse">beat_pulse</button>
+          <button class="led-mode-btn" data-led-mode="breathe">breathe</button>
+          <button class="led-mode-btn" data-led-mode="rainbow">rainbow</button>
+          <button class="led-mode-btn" data-led-mode="static">static</button>
+        </div>
+      </div>
+      <div class="pnl" style="padding:14px; display:flex; flex-direction:column; gap:16px;">
+        <!-- FANS Color (dual) -->
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span class="lbl">&gt; color --fans (basses)</span>
+          </div>
+          <div id="palette-fans" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+            <span class="color-swatch rainbow" data-zone="fans" data-color="rainbow" style="background:linear-gradient(90deg,#ff2d55,#ffe600,#37ff8b,#00e1ff,#c44cff);"></span>
+            <span class="color-swatch" data-zone="fans" style="background:#b428ff; box-shadow:0 0 9px #b428ff;" data-color="violet"></span>
+            <span class="color-swatch" data-zone="fans" style="background:#00bcd4;" data-color="cyan"></span>
+            <span class="color-swatch" data-zone="fans" style="background:#2196f3;" data-color="blue"></span>
+            <span class="color-swatch" data-zone="fans" style="background:#4caf50;" data-color="green"></span>
+            <span class="color-swatch" data-zone="fans" style="background:#ffeb3b;" data-color="yellow"></span>
+            <span class="color-swatch" data-zone="fans" style="background:#ff9800;" data-color="orange"></span>
+            <span class="color-swatch" data-zone="fans" style="background:#f44336;" data-color="red"></span>
+            <span class="color-swatch" data-zone="fans" style="background:#e91e63;" data-color="pink"></span>
+            <span class="color-swatch" data-zone="fans" style="background:#ffffff;" data-color="white"></span>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span class="lbl">&gt; color --fans2 (aigus)</span>
+          </div>
+          <div id="palette-fans2" style="display:flex; gap:8px; flex-wrap:wrap;">
+            <!-- REMOVED: rainbow swatch for fans2 - no backend fan_mode2 available (L1534 tried /api/led/fan_mode/rainbow) -->
+            <span class="color-swatch" data-zone="fans2" style="background:#b428ff; box-shadow:0 0 9px #b428ff;" data-color="violet"></span>
+            <span class="color-swatch" data-zone="fans2" style="background:#00bcd4;" data-color="cyan"></span>
+            <span class="color-swatch" data-zone="fans2" style="background:#2196f3;" data-color="blue"></span>
+            <span class="color-swatch" data-zone="fans2" style="background:#4caf50;" data-color="green"></span>
+            <span class="color-swatch" data-zone="fans2" style="background:#ffeb3b;" data-color="yellow"></span>
+            <span class="color-swatch" data-zone="fans2" style="background:#ff9800;" data-color="orange"></span>
+            <span class="color-swatch" data-zone="fans2" style="background:#f44336;" data-color="red"></span>
+            <span class="color-swatch" data-zone="fans2" style="background:#e91e63;" data-color="pink"></span>
+            <span class="color-swatch" data-zone="fans2" style="background:#ffffff;" data-color="white"></span>
+          </div>
+        </div>
+
+        <!-- CASE Color -->
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <span class="lbl">&gt; color --case</span>
+          </div>
+          <div id="palette-case" style="display:flex; gap:8px; flex-wrap:wrap;">
+            <span class="color-swatch rainbow" data-zone="case" data-color="rainbow" style="background:linear-gradient(90deg,#ff2d55,#ffe600,#37ff8b,#00e1ff,#c44cff);"></span>
+            <span class="color-swatch" data-zone="case" style="background:#b428ff; box-shadow:0 0 9px #b428ff;" data-color="violet"></span>
+            <span class="color-swatch" data-zone="case" style="background:#00bcd4;" data-color="cyan"></span>
+            <span class="color-swatch" data-zone="case" style="background:#2196f3;" data-color="blue"></span>
+            <span class="color-swatch" data-zone="case" style="background:#4caf50;" data-color="green"></span>
+            <span class="color-swatch" data-zone="case" style="background:#ffeb3b;" data-color="yellow"></span>
+            <span class="color-swatch" data-zone="case" style="background:#ff9800;" data-color="orange"></span>
+            <span class="color-swatch" data-zone="case" style="background:#f44336;" data-color="red"></span>
+            <span class="color-swatch" data-zone="case" style="background:#e91e63;" data-color="pink"></span>
+            <span class="color-swatch" data-zone="case" style="background:#ffffff;" data-color="white"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- col2: sliders -->
+    <div class="pnl" style="padding:14px; display:flex; flex-direction:column; gap:14px;">
+      <div class="lbl">&gt; tune --params</div>
+      <div class="slider-row" style="display:flex; align-items:center; gap:11px; font-size:12px;">
+        <span style="width:80px; color:var(--dim);">SPEED</span>
+        <input type="range" id="speed" min="0" max="100" value="62" style="flex:1; background:var(--line);">
+        <span class="slider-val">62</span>
+      </div>
+      <div class="slider-row" style="display:flex; align-items:center; gap:11px; font-size:12px;">
+        <span style="width:80px; color:var(--dim);">BRIGHT</span>
+        <input type="range" id="bright" min="0" max="100" value="80" style="flex:1; background:var(--line);">
+        <span class="slider-val">80</span>
+      </div>
+      <div class="slider-row" style="display:flex; align-items:center; gap:11px; font-size:12px;">
+        <span style="width:80px; color:var(--dim);">SENS</span>
+        <input type="range" id="sens" min="0" max="100" value="48" style="flex:1; background:var(--line);">
+        <span class="slider-val">48</span>
+      </div>
+      <div class="slider-row" style="display:flex; align-items:center; gap:11px; font-size:12px;">
+        <span style="width:80px; color:var(--dim);">DECAY</span>
+        <input type="range" id="decay" min="0" max="100" value="35" style="flex:1; background:var(--line);">
+        <span class="slider-val">35</span>
+      </div>
+      <div class="slider-row" style="display:flex; align-items:center; gap:11px; font-size:12px;">
+        <span style="width:80px; color:var(--dim);">SMOOTH</span>
+        <input type="range" id="smooth" min="0" max="100" value="58" style="flex:1; background:var(--line);">
+        <span class="slider-val">58</span>
+      </div>
+      <div class="slider-row" style="display:flex; align-items:center; gap:11px; font-size:12px;">
+        <span style="width:80px; color:var(--dim);">GAIN</span>
+        <input type="range" id="gain" min="0" max="100" value="70" style="flex:1; background:var(--line);">
+        <span class="slider-val">70</span>
+      </div>
+      <div style="border-top:1px dashed var(--line); margin-top:2px; padding-top:11px;">
+        <div class="lbl" style="margin-bottom:9px;">&gt; hud --overlay</div>
+        <div style="display:flex; flex-direction:column; gap:6px; font-size:13px;">
+          <button class="toggle-btn active" data-toggle="clock">[x] horloge</button>
+          <button class="toggle-btn active" data-toggle="now_playing">[x] now_playing</button>
+          <button class="toggle-btn" data-toggle="cpu_gpu_temp">[ ] cpu_gpu_temp</button>
+          <button class="toggle-btn" data-toggle="date">[ ] date</button>
+          <button class="toggle-btn active" data-toggle="vu_meter">[x] vu_meter</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- col3: scenes + lyrics -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <div class="pnl" style="padding:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:11px;">
+          <span class="lbl">&gt; scene --load</span>
+          <button id="savescene" class="save-btn">:w save</button>
+        </div>
+        <div id="scenes" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <button class="scene-btn" data-scene="rave">rave</button>
+          <button class="scene-btn active" data-scene="focus">focus</button>
+          <button class="scene-btn" data-scene="chill">chill</button>
+          <button class="scene-btn" data-scene="stealth">stealth</button>
+          <button class="scene-btn" data-scene="gaming">gaming</button>
+          <button class="scene-btn" data-scene="movie">movie</button>
+        </div>
+      </div>
+      <div class="pnl" style="padding:14px;">
+        <div class="lbl" style="margin-bottom:11px;">&gt; lyrics --sync</div>
+
+        <!-- Recherche manuelle -->
+        <div style="display:flex; gap:8px; margin-bottom:11px;">
+          <input id="lyrics-artist" placeholder="artiste…" style="flex:1;">
+          <input id="lyrics-title" placeholder="titre…" style="flex:1;">
+          <button id="lyrics-search-btn" style="padding:4px 8px;">🔍</button>
+        </div>
+
+        <!-- État actuel + validation -->
+        <div id="lyrics-current" style="margin-bottom:11px; padding:9px; background:#010402; border:1px solid var(--line); border-radius:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="color:var(--dim);">Source: <span id="lyrics-source-name">auto</span></span>
+            <button id="lyrics-flag-btn" style="background:rgba(255,60,60,0.15); border:1px solid rgba(255,60,60,0.3); color:rgba(255,100,100,1); padding:2px 8px; font-size:11px;">⚠ Wrong</button>
+          </div>
+          <div id="lyrics-current-line" style="color:var(--grn); margin-top:4px; text-shadow:0 0 8px rgba(43,255,136,.5);">▶ waiting for audio...</div>
+        </div>
+
+        <!-- Feedback validation -->
+        <div id="lyrics-feedback" style="display:none; padding:8px; background:rgba(0,255,136,0.1); border:1px solid var(--grn); border-radius:4px; margin-bottom:11px; font-size:12px;">
+          <span style="color:var(--grn);">✓ Skip (session) - Shift+clic pour blacklist permanent</span>
+        </div>
+
+        <!-- Offset slider -->
+        <div class="slider-row" style="display:flex; align-items:center; gap:11px; margin-top:12px; font-size:12px;">
+          <span style="width:80px; color:var(--dim);">OFFSET</span>
+          <input type="range" id="lyrics-offset" min="-500" max="500" value="-120" style="flex:1; background:var(--line);">
+          <span class="slider-val" style="width:50px;">-120ms</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== console log ===== -->
+  <div class="pnl" style="padding:14px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:9px;">
+      <span class="lbl">&gt; tail -f /var/log/boxscreen.log</span>
+      <span class="lbl">keys: <span style="color:var(--grn);">1-5</span> mode · <span style="color:var(--grn);">spc</span> play · <span style="color:var(--grn);">↑↓</span> bright · <span style="color:var(--grn);">s</span> scene · <span style="color:var(--grn);">h</span> hud</span>
+    </div>
+    <div id="log">
+      <div>[boot] firmware v9.16.2 · 5 led zones · audio engine ready</div>
+      <div>[net]  control server bound 0.0.0.0:7420</div>
+      <div>[mode] waiting for connection...</div>
+    </div>
+    <div style="font-size:12px; color:var(--grn); margin-top:4px;">$ <span style="animation:blink 1s step-end infinite;">█</span></div>
+  </div>
+
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let state = {
+  mode: null,
+  hud: null,
+  bpm: 0,
+  level: 0,
+  beat_seq: 0,
+  led: {},
+  track: null,
+  position: 0,
+  duration: 0,
+  playing: false
+};
+
+// Track sliders being actively dragged to prevent poll overwrites
+let activeSliders = new Set();
+
+// ── Transport UI Updates ───────────────────────────────────────────────────────────
+function updateTransport() {
+  // Update track name
+  const trackEl = document.getElementById('trackname');
+  if (trackEl) {
+    trackEl.textContent = state.track || 'No Track';
+  }
+
+  // Update play button state
+  const playBtn = document.getElementById('play');
+  if (playBtn) {
+    // Only update text if playing state changed (avoid flickering)
+    const shouldBePlaying = !!state.playing;
+    const isCurrentlyPlaying = playBtn.classList.contains('playing');
+    if (shouldBePlaying !== isCurrentlyPlaying) {
+      if (shouldBePlaying) {
+        playBtn.textContent = '⏸ PAUSE';
+        playBtn.classList.add('playing');
+      } else {
+        playBtn.textContent = '▶ PLAY';
+        playBtn.classList.remove('playing');
+      }
+    }
+  }
+
+  // Update time display (mm:ss format)
+  const ptimeEl = document.getElementById('ptime');
+  if (ptimeEl && typeof state.position === 'number') {
+    const totalSeconds = Math.floor(state.position);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    ptimeEl.textContent = `${mins}:${String(secs).padStart(2, '0')}`;
+  }
+
+  // Update progress bar if duration is available
+  const pbarEl = document.getElementById('pbar');
+  if (pbarEl && typeof state.duration === 'number' && state.duration > 0) {
+    const progress = Math.min(100, Math.max(0, (state.position / state.duration) * 100));
+    pbarEl.style.width = `${progress}%`;
+  }
+}
+
+let lastBeatSeq = -1;
+let lastBeatTime = 0;  // Timestamp du dernier beat pour impulsion decroissante
+let uptimeStart = Date.now();
+let lastAmbienceClick = 0;  // Timestamp du dernier clic sur mode ambience (pour timeout 30s)
+
+// SSE audio activity tracking
+let sseAudioActive = false;
+let sseAudioTimestamp = 0;
+
+// LED zone selection state
+let ledZoneTarget = 'case'; // 'case', 'fans', or 'both'
+
+// ── 3D Case Component ────────────────────────────────────────────────────────────
+const pc3d = document.getElementById('pc3d');
+const pc3dwrap = document.getElementById('pc3dwrap');
+let rotY = -18, rotX = -12, isDragging = false;
+let startX, startY, startRotY, startRotX;
+
+function build3DCase() {
+  pc3d.innerHTML = `
+    <!-- ASCII box faces - phosphor theme -->
+    <!-- front face -->
+    <div class="face" style="width:132px; height:168px; transform:translate(-50%,-50%) translateZ(42px); background:rgba(4,16,9,.92); box-shadow:0 0 16px rgba(43,255,136,.25), inset 0 0 18px rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; overflow:hidden;">
+      <pre class="asc" style="margin:0;">╭┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╮
+┊ THERMALRIGHT   ┊
+├┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┤
+┊ fond    côté   ┊
+┊ <span class="fanx" data-i="1">◉</span> <span class="fanx" data-i="2">◉</span>      <span class="fanx" data-i="3">◉</span>     ┊
+┊          <span class="fanx" data-i="4">◉</span>     ┊
+┊          <span class="fanx" data-i="5">◉</span>     ┊
+┊················┊
+┊· GEFORCE RTX  ·┊
+┊················┊
+┊ bas            ┊
+┊ <span class="fanx" data-i="6">◉</span>  <span class="fanx" data-i="7">◉</span>  <span class="fanx" data-i="8">◉</span>        ┊
+┊                ┊
+╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╯</pre>
+    </div>
+    <!-- back face -->
+    <div class="face" style="width:132px; height:168px; transform:translate(-50%,-50%) rotateY(180deg) translateZ(42px); background:rgba(4,16,9,.92); box-shadow:0 0 16px rgba(43,255,136,.25), inset 0 0 18px rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; overflow:hidden;">
+      <pre class="asc" style="margin:0;">╭┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╮
+┊  THERMALRIGHT  ┊
+┊                ┊
+┊ ◌          ◌ ┊
+┊ ┈┈┈┈┈┈┈┈┈┈┈┈ ┈
+┊ ░ MOTHERBOARD ┊
+┊ ┈┈┈┈┈┈┈┈┈┈┈┈ ┈
+┊                ┊
+┊ [USB][USB](▸) ┊
+┊ ◌          ◌ ┊
+┊                ┊
+┊  1920 × 462    ┊
+╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╯</pre>
+    </div>
+    <!-- side left -->
+    <div class="face" style="width:84px; height:168px; transform:translate(-50%,-50%) rotateY(-90deg) translateZ(66px); background:rgba(4,16,9,.92); box-shadow:0 0 16px rgba(43,255,136,.25), inset 0 0 18px rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; overflow:hidden;">
+      <pre class="asc" style="margin:0;">╭┄┄┄┄┄┄┄┄╮
+┊ SIDE   ┊
+├┈┈┈┈┈┈┈┈┤
+┊ ┊┊┊┊┊┊ ┊
+┊ ┊┊┊┊┊┊ ┊
+┊ ┊┊┊┊┊┊ ┊
+┊ ┊┊┊┊┊┊ ┊
+┊ ┊┊┊┊┊┊ ┊
+┊        ┊
+┊ 9·16   ┊
+╰┄┄┄┄┄┄┄┄╯</pre>
+    </div>
+    <!-- side right (glass) -->
+    <div class="face" style="width:84px; height:168px; transform:translate(-50%,-50%) rotateY(90deg) translateZ(66px); background:rgba(4,16,9,.92); box-shadow:0 0 16px rgba(43,255,136,.25), inset 0 0 18px rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; overflow:hidden;">
+      <pre class="asc" style="margin:0;">╭┄┄┄┄┄┄┄┄╮
+┊ VITRE  ┊
+├┈┈┈┈┈┈┈┈┤
+┊░░░░░░░░┊
+┊░░░░░░░░┊
+┊░░░░░░░░┊
+┊░░░░░░░░┊
+┊░░░░░░░░┊
+┊░░░░░░░░┊
+┊        ┊
+┊ ▮ LED  ┊
+┊        ┊
+╰┄┄┄┄┄┄┄┄╯</pre>
+    </div>
+    <!-- top (mesh) -->
+    <div class="face" style="width:132px; height:84px; transform:translate(-50%,-50%) rotateX(90deg) translateZ(84px); background:rgba(4,16,9,.92); box-shadow:0 0 16px rgba(43,255,136,.25), inset 0 0 18px rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; overflow:hidden;">
+      <pre class="asc" style="margin:0;">╭┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╮
+┊· · · MESH · ·┊
+┊ · · · · · · ┊
+┊· · · · · · ·┊
+╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╯</pre>
+    </div>
+    <!-- bottom (intake) -->
+    <div class="face" style="width:132px; height:84px; transform:translate(-50%,-50%) rotateX(-90deg) translateZ(84px); background:rgba(4,16,9,.92); box-shadow:0 0 16px rgba(43,255,136,.25), inset 0 0 18px rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; overflow:hidden;">
+      <pre class="asc" style="margin:0;">╭┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╮
+┊                ┊
+┊ (◉) (◉) (◉)   ┊
+┊  intake fans   ┊
+╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╯</pre>
+    </div>
+  `;
+}
+
+function update3DCase() {
+  if (!pc3d) return;
+  if (!state.led) state.led = {};
+
+  // Use SSE-provided current_color if available, otherwise fallback to fan_color/case_color
+  const currentColor = state.led.current_color;
+
+  // Update fan colors
+  const fansColorName = state.led.fan_color || state.led.case_color || 'green';
+  const fansColor = currentColor || (COLOR_MAP[fansColorName] || fansColorName);
+  const fans = pc3d.querySelectorAll('.fanx:not(.off)');
+  fans.forEach(f => {
+    f.style.color = fansColor;
+    f.style.textShadow = `0 0 8px ${fansColor}`;
+  });
+
+  // Update LED indicator on glass side with case_color
+  const caseColorName = state.led.case_color || 'green';
+  const caseColor = currentColor || (COLOR_MAP[caseColorName] || caseColorName);
+  const ledIndicator = pc3d.querySelector('.asc');
+  if (ledIndicator) {
+    ledIndicator.style.color = caseColor;
+    ledIndicator.style.textShadow = `0 0 6px ${caseColor}`;
+  }
+}
+
+function animate3DCase() {
+  if (!isDragging && pc3d) {
+    rotY += 0.25;
+  }
+  if (pc3d) {
+    pc3d.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+  }
+  requestAnimationFrame(animate3DCase);
+}
+
+pc3dwrap.addEventListener('pointerdown', (e) => {
+  isDragging = true;
+  pc3dwrap.classList.add('grabbing');
+  startX = e.clientX;
+  startY = e.clientY;
+  startRotY = rotY;
+  startRotX = rotX;
+  try { pc3dwrap.setPointerCapture(e.pointerId); } catch {}
+});
+
+pc3dwrap.addEventListener('pointermove', (e) => {
+  if (!isDragging) return;
+  rotY = startRotY + (e.clientX - startX) * 0.55;
+  rotX = Math.max(-62, Math.min(14, startRotX - (e.clientY - startY) * 0.42));
+});
+
+const endDrag = () => {
+  isDragging = false;
+  pc3dwrap.classList.remove('grabbing');
+};
+
+pc3dwrap.addEventListener('pointerup', endDrag);
+pc3dwrap.addEventListener('pointercancel', endDrag);
+
+build3DCase();
+
+// ── Fan Click Handlers (doit être après build3DCase) ──────────────────────────────────
+document.querySelectorAll('.fanx').forEach(f => {
+  f.addEventListener('pointerdown', e => e.stopPropagation());
+  f.addEventListener('click', e => {
+    e.stopPropagation();
+    const off = f.classList.toggle('off');
+    f.style.color = off ? '#0c4a2b' : '#37ff8b';
+    f.style.textShadow = off ? 'none' : '0 0 8px rgba(43,255,136,.85)';
+    log(`FAN ${f.dataset.i}${off ? ' : OFF' : ' : ON'}`);
+  });
+});
+
+animate3DCase();
+
+// ── Audio Visualization (Canvas) ───────────────────────────────────────────────
+const screenCanvas = document.getElementById('screen');
+const miniCanvas = document.getElementById('mini');
+const sctx = screenCanvas ? screenCanvas.getContext('2d') : null;
+const mctx = miniCanvas ? miniCanvas.getContext('2d') : null;
+
+// ── Downsampling du spectre (MAX par bloc pour garder les peaks) ────────────────────────
+function downsample(src, n) {
+  if (!src || src.length === 0 || n <= 0) return new Array(n).fill(0);
+  const blockSize = Math.ceil(src.length / n);
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) {
+    let max = 0;
+    const end = Math.min((i + 1) * blockSize, src.length);
+    for (let j = i * blockSize; j < end; j++) {
+      if (src[j] > max) max = src[j];
+    }
+    out[i] = max;
+  }
+  return out;
+}
+
+let audioData = {
+  bands: new Array(56).fill(0),
+  wave: new Array(180).fill(0)
+};
+
+// Cibles pour interpolation (SSE écrit ici, rAF interpole vers audioData)
+let targetBands = new Array(56).fill(0);
+let targetWave = new Array(180).fill(0);
+
+// Gradients précalculés (évite les allocations à chaque frame)
+let spectrumGradientCache = null;
+let ambienceBgGradientCache = null;
+let ambienceBgGradientBeatCache = null;
+let ambienceCoreGradientCache = null;
+let ambienceCoreGradientBeatCache = null;
+const CORE_GRADIENT_RADIUS = 60;  // rayon de reference des gradients du core (mis a l'echelle au rendu)
+let cachedCanvasHeight = 0;
+let cachedCanvasMaxDim = 0;
+
+function setupCanvas(canvas) {
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  // Guard: si le canvas a une largeur nulle (onglet caché), on skip et réessayera au prochain resize
+  if (!rect.width) return;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // Invalider les gradients cache lors du resize
+  const h = rect.height;
+  const maxDim = Math.max(rect.width, rect.height);
+  if (h !== cachedCanvasHeight || maxDim !== cachedCanvasMaxDim) {
+    spectrumGradientCache = null;
+    ambienceBgGradientCache = null;
+    ambienceBgGradientBeatCache = null;
+    ambienceCoreGradientCache = null;
+    ambienceCoreGradientBeatCache = null;
+    cachedCanvasHeight = h;
+    cachedCanvasMaxDim = maxDim;
+  }
+}
+
+function initCanvases() {
+  setupCanvas(screenCanvas);
+  setupCanvas(miniCanvas);
+}
+
+function drawSpectrum(ctx, w, h) {
+  const N = audioData.bands.length;
+  const bw = w / N;
+  const G = '#2bff88';
+
+  // Créer ou réutiliser le gradient vertical pleine hauteur
+  if (!spectrumGradientCache) {
+    spectrumGradientCache = ctx.createLinearGradient(0, h, 0, 0);
+    spectrumGradientCache.addColorStop(0, '#0f7a45');
+    spectrumGradientCache.addColorStop(1, G);
+  }
+
+  for (let i = 0; i < N; i++) {
+    const bh = audioData.bands[i] * h * 0.82;
+    ctx.fillStyle = spectrumGradientCache;
+    ctx.fillRect(i * bw + bw * 0.15, h - bh, bw * 0.7, bh);
+  }
+}
+
+function drawWaveform(ctx, w, h) {
+  const G = '#2bff88';
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = G;
+  ctx.shadowColor = G;
+  ctx.shadowBlur = 10;
+
+  ctx.beginPath();
+  for (let i = 0; i < audioData.wave.length; i++) {
+    const x = i / (audioData.wave.length - 1) * w;
+    const y = h / 2 + audioData.wave[i] * h * 0.4;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 0.35;
+  ctx.beginPath();
+  for (let i = 0; i < audioData.wave.length; i++) {
+    const x = i / (audioData.wave.length - 1) * w;
+    const y = h / 2 - audioData.wave[i] * h * 0.4;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+}
+
+function drawAmbience(ctx, w, h) {
+  const G = '#2bff88';
+  const cx = w / 2, cy = h / 2;
+
+  // Beat impulsion decroissante (1→0 sur 150ms)
+  const now = performance.now();
+  const beat = Math.max(0, 1 - (now - lastBeatTime) / 150);
+
+  // Créer ou réutiliser les gradients de fond (2 versions: beat/no-beat)
+  const maxDim = Math.max(w, h);
+  if (!ambienceBgGradientCache || !ambienceBgGradientBeatCache || maxDim !== cachedCanvasMaxDim) {
+    // Version sans beat
+    ambienceBgGradientCache = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxDim * 0.72);
+    ambienceBgGradientCache.addColorStop(0, 'rgba(4,25,14,1)');
+    ambienceBgGradientCache.addColorStop(1, '#010402');
+    // Version avec beat
+    ambienceBgGradientBeatCache = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxDim * 0.72);
+    ambienceBgGradientBeatCache.addColorStop(0, 'rgba(18,81,14,1)');
+    ambienceBgGradientBeatCache.addColorStop(1, '#010402');
+    cachedCanvasMaxDim = maxDim;
+  }
+
+  ctx.fillStyle = ambienceBgGradientCache;
+  ctx.fillRect(0, 0, w, h);
+  if (beat > 0.01) {
+    ctx.globalAlpha = beat;
+    ctx.fillStyle = ambienceBgGradientBeatCache;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = 1;
+  }
+
+  // Grid lines
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  ctx.strokeStyle = G;
+  ctx.lineWidth = 1;
+  const gs = 34;
+  const gx = (Date.now() / 1000 * 9) % gs;
+  ctx.beginPath();
+  for (let x = -gx; x < w; x += gs) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+  for (let y = 0; y < h; y += gs) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+  ctx.stroke();
+  ctx.restore();
+
+  // Ambience flower - 4 rotating layers
+  ctx.save();
+  ctx.translate(cx, cy);
+  const energy = Math.min(1, (state.level || 0) * 1.4);
+  const baseR = Math.min(w, h) * (0.19 + 0.05 * energy + 0.03 * beat);
+  const layers = 4;
+  const STEPS = 170;
+  const t = Date.now() / 1000;
+
+  // Niveaux par plage de frequences (moyenne de fenetre = stable, boost = expressif)
+  const bandAvg = (a, b) => {
+    let s = 0;
+    for (let i = a; i < b; i++) s += audioData.bands[i] || 0;
+    return s / (b - a);
+  };
+  const b1 = Math.min(1.2, bandAvg(0, 8)   * 1.9);  // basses (kick)
+  const b2 = Math.min(1.2, bandAvg(10, 20) * 1.9);  // mid-basses
+  const b3 = Math.min(1.2, bandAvg(24, 38) * 2.2);  // mids (voix, snare)
+  const b4 = Math.min(1.2, bandAvg(42, 56) * 2.6);  // highs (hi-hats, cymbales)
+
+  for (let L = layers - 1; L >= 0; L--) {
+    const lf = 1 - L * 0.17;
+    const rot = t * (0.18 + L * 0.07) * (L % 2 ? -1 : 1);
+    ctx.save();
+    ctx.rotate(rot);
+    ctx.scale(lf, lf);
+    ctx.beginPath();
+
+    for (let i = 0; i <= STEPS; i++) {
+      const ang = i / STEPS * Math.PI * 2;
+      const r = baseR * (
+        1 + 0.60 * b1 * Math.sin(ang * 3 + t * 1.3) +
+        0.45 * b2 * Math.sin(ang * 5 - t * 0.9) +
+        0.38 * b3 * Math.sin(ang * 8 + t * 0.5) +
+        0.30 * b4 * Math.sin(ang * 13 - t * 0.7) +
+        0.06 * Math.sin(ang + t)
+      );
+      const rc = Math.min(r, Math.min(w, h) * 0.48);
+      const x = Math.cos(ang) * rc;
+      const y = Math.sin(ang) * rc;
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+
+    ctx.closePath();
+    const fade = 1 - L / layers;
+
+    if (L === 0) {
+      ctx.fillStyle = 'rgba(43,255,136,' + (0.05 + beat * 0.10) + ')';
+      ctx.fill();
+    }
+
+    ctx.strokeStyle = 'rgba(43,255,136,' + Math.min(1, 0.18 + 0.62 * fade + 0.25 * energy) + ')';
+    ctx.lineWidth = 2.4 - L * 0.35;
+    ctx.shadowColor = G;
+    ctx.shadowBlur = 4 + 16 * fade;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Pulsing core - utiliser le gradient cache ou le créer une seule fois
+  // Core qui pulse avec les basses + le beat
+  const cr = baseR * (0.40 + 0.28 * b1 + 0.30 * beat);
+  if (!ambienceCoreGradientCache || !ambienceCoreGradientBeatCache) {
+    ambienceCoreGradientCache = ctx.createRadialGradient(0, 0, 0, 0, 0, CORE_GRADIENT_RADIUS);
+    ambienceCoreGradientCache.addColorStop(0, 'rgba(234,255,243,0.85)');
+    ambienceCoreGradientCache.addColorStop(0.4, 'rgba(43,255,136,.4)');
+    ambienceCoreGradientCache.addColorStop(1, 'rgba(43,255,136,0)');
+    ambienceCoreGradientBeatCache = ctx.createRadialGradient(0, 0, 0, 0, 0, CORE_GRADIENT_RADIUS);
+    ambienceCoreGradientBeatCache.addColorStop(0, 'rgba(234,255,243,1.0)');
+    ambienceCoreGradientBeatCache.addColorStop(0.4, 'rgba(43,255,136,.5)');
+    ambienceCoreGradientBeatCache.addColorStop(1, 'rgba(43,255,136,0)');
+  }
+
+  ctx.shadowBlur = 0;
+  const coreScale = cr / CORE_GRADIENT_RADIUS;
+  ctx.save();
+  ctx.scale(coreScale, coreScale);
+  ctx.fillStyle = ambienceCoreGradientCache;
+  ctx.beginPath();
+  ctx.arc(0, 0, CORE_GRADIENT_RADIUS, 0, Math.PI * 2);
+  ctx.fill();
+  if (beat > 0.01) {
+    ctx.globalAlpha = beat;
+    ctx.fillStyle = ambienceCoreGradientBeatCache;
+    ctx.beginPath();
+    ctx.arc(0, 0, CORE_GRADIENT_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+
+  ctx.restore();
+}
+
+function drawMiniSpectrum(ctx, w, h) {
+  ctx.fillStyle = '#010402';
+  ctx.fillRect(0, 0, w, h);
+
+  // audioData.bands est deja downsamplee (56 bandes) → prendre 1 sur 2 → 28 → utiliser 24
+  const n = 24;
+  const bw = w / n;
+  for (let i = 0; i < n; i++) {
+    // Prendre 1 sur 2 dans les bands deja downsamplees pour couvrir tout le spectre
+    const bh = (audioData.bands[Math.floor(i * 56 / n)] || 0) * h * 0.92;
+    ctx.fillStyle = '#2bff88';
+    ctx.globalAlpha = 0.85;
+    ctx.fillRect(i * bw + 1, h - bh, bw - 2, bh);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawAudioViz() {
+  if (!sctx || !mctx) return;
+
+  // Interpolation donnees audio -> affichage, a CHAQUE frame et pour TOUS les modes
+  // (sinon l'ambience et le mini-spectre ne recoivent jamais les niveaux)
+  for (let i = 0; i < audioData.bands.length; i++) {
+    audioData.bands[i] += ((targetBands[i] || 0) - audioData.bands[i]) * 0.35;
+  }
+  if (audioData.wave.length !== targetWave.length) {
+    audioData.wave = targetWave.slice();
+  } else {
+    for (let i = 0; i < audioData.wave.length; i++) {
+      audioData.wave[i] += (targetWave[i] - audioData.wave[i]) * 0.35;
+    }
+  }
+
+  const sw = screenCanvas.clientWidth;
+  const sh = screenCanvas.clientHeight;
+
+  // Check if current mode is an audio visualization mode
+  // Audio viz is active when mode is 'audio' OR hud is 'audio_viz'
+  const isAudioMode = state.mode === 'audio' || state.hud === 'audio_viz';
+
+  if (!isAudioMode) {
+    // Draw placeholder for non-audio modes
+    sctx.fillStyle = '#010402';
+    sctx.fillRect(0, 0, sw, sh);
+
+    // Draw mode name centered (terminal style)
+    sctx.fillStyle = '#2bff88';
+    sctx.font = '14px "JetBrains Mono"';
+    sctx.textAlign = 'center';
+    sctx.textBaseline = 'middle';
+    sctx.shadowColor = '#2bff88';
+    sctx.shadowBlur = 8;
+
+    const displayMode = state.mode || state.hud || 'unknown';
+    sctx.fillText(`[${displayMode.toUpperCase()}]`, sw / 2, sh / 2);
+    sctx.shadowBlur = 0;
+  } else {
+    // Audio visualization - use viz_mode
+    const vizMode = state.viz_mode || 'ambience';
+
+    // Check if ambience mode is selected
+    if (vizMode === 'ambience') {
+      drawAmbience(sctx, sw, sh);
+    } else if (vizMode === 'spectrum') {
+      sctx.fillStyle = '#010402';
+      sctx.fillRect(0, 0, sw, sh);
+      drawSpectrum(sctx, sw, sh);
+    } else {
+      sctx.fillStyle = '#010402';
+      sctx.fillRect(0, 0, sw, sh);
+      drawWaveform(sctx, sw, sh);
+    }
+  }
+
+  const mw = miniCanvas.clientWidth;
+  const mh = miniCanvas.clientHeight;
+  drawMiniSpectrum(mctx, mw, mh);
+
+  requestAnimationFrame(drawAudioViz);
+}
+
+// Initialize canvases and start audio visualization after DOM is ready
+// Use readyState check to handle cases where script is evaluated after DOMContentLoaded
+if (document.readyState !== 'loading') {
+  // DOM already ready - initialize immediately
+  initCanvases();
+  drawAudioViz();
+} else {
+  // Wait for DOMContentLoaded
+  window.addEventListener('DOMContentLoaded', () => {
+    initCanvases();
+    drawAudioViz();
+  });
+}
+window.addEventListener('resize', initCanvases);
+
+// ── API Communication ───────────────────────────────────────────────────────────
+async function post(path) {
+  try {
+    const r = await fetch(path, { method: 'POST' });
+    if (!r.ok) {
+      log(`[err] ${path} → ${r.status}`);
+      return;
+    }
+    log(`[cmd] ${path}`);
+  } catch (e) {
+    log(`[err] ${e.message}`);
+  }
+}
+
+async function poll() {
+  try {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+
+    // Le backend gere viz_mode (ambience inclus) — merge direct
+    state = { ...state, ...data };
+
+    // Update UI
+    updateModeButtons();
+    updateHudButtons();
+    updateVizButtons();
+    updateAudioMeters();
+    updateLeds();
+    updateConnection(true);
+    updateTransport();
+
+  } catch (e) {
+    updateConnection(false);
+  }
+}
+
+function updateConnection(connected) {
+  const conn = document.getElementById('conn');
+  conn.className = connected ? 'on' : 'off';
+  conn.textContent = connected ? '● ONLINE' : '● OFFLINE';
+
+  // Update host IP display
+  const hostIp = document.getElementById('hostip');
+  if (hostIp) {
+    hostIp.textContent = connected ? location.host : '--';
+  }
+}
+
+function updateModeButtons() {
+  document.querySelectorAll('[data-mode]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === state.mode);
+    const txt = btn.textContent.replace(/^\[.\]\s*/, '');
+    btn.firstChild.textContent = (btn.classList.contains('active') ? '[*] ' : '[ ] ') + txt;
+  });
+}
+
+function updateHudButtons() {
+  document.querySelectorAll('[data-hud]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.hud === state.hud);
+    const txt = btn.textContent.replace(/^\[.\]\s*/, '');
+    btn.firstChild.textContent = (btn.classList.contains('active') ? '[*] ' : '[ ] ') + txt;
+  });
+}
+
+function updateVizButtons() {
+  document.querySelectorAll('[data-viz]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.viz === (state.viz_mode || 'ambience'));
+    const txt = btn.textContent.replace(/^\[.\]\s*/, '');
+    btn.firstChild.textContent = (btn.classList.contains('active') ? '[*] ' : '[ ] ') + txt;
+  });
+}
+
+function updateAudioMeters() {
+  const bpm = state.bpm || 0;
+  const level = state.level || 0;
+
+  document.getElementById('bpm').textContent = Math.round(bpm);
+  document.getElementById('peak').textContent = level > 0 ? `-${Math.round((1 - level) * 20)} dB` : '-inf dB';
+
+  // Beat dot animation
+  if (state.beat_seq !== lastBeatSeq) {
+    lastBeatSeq = state.beat_seq;
+    lastBeatTime = performance.now();  // Met à jour le timestamp pour impulsion decroissante
+    const dot = document.getElementById('beatdot');
+    dot.style.transform = 'scale(1.5)';
+    setTimeout(() => dot.style.transform = 'scale(1)', 100);
+  }
+
+  // VU meters
+  const vuL = document.getElementById('vuL');
+  const vuR = document.getElementById('vuR');
+  if (vuL) vuL.style.height = (level * 100) + '%';
+  if (vuR) vuR.style.height = (level * 100) + '%';
+
+  // Only generate synthetic data if no SSE audio event received in the last 2 seconds
+  const timeSinceLastSSE = Date.now() - sseAudioTimestamp;
+  if (timeSinceLastSSE > 2000) {
+    // Update target audio data for canvas (synthetic fallback)
+    // Note: interpolation to audioData.bands happens in drawSpectrum/drawWaveform rAF
+    for (let i = 0; i < targetBands.length; i++) {
+      targetBands[i] = level * (1 - i / targetBands.length);
+    }
+
+    for (let i = 0; i < targetWave.length; i++) {
+      targetWave[i] = Math.sin(Date.now() / 200 + i * 0.1) * level * 0.5;
+    }
+  }
+  // When SSE is active (within 2s), targetBands and targetWave are updated directly by SSE handler
+  // and interpolated to audioData.bands/audioData.wave in rAF draw functions
+}
+
+// Color mapping from backend names to display hex values
+const COLOR_MAP = {
+  'violet': '#b428ff',
+  'cyan': '#00bcd4',
+  'blue': '#2196f3',
+  'teal': '#009688',
+  'green': '#4caf50',
+  'yellow': '#ffeb3b',
+  'orange': '#ff9800',
+  'red': '#f44336',
+  'pink': '#e91e63',
+  'white': '#ffffff',
+  'rainbow': 'rainbow'
+};
+
+function updateLeds() {
+  if (!state.led) state.led = {};
+
+  // Update LED mode buttons based on selected zone
+  document.querySelectorAll('.led-mode-btn').forEach(btn => {
+    const modeToCheck = ledZoneTarget === 'fans' ? state.led.fan_mode : state.led.case_mode;
+    btn.classList.toggle('active', btn.dataset.ledMode === modeToCheck);
+  });
+
+  // Update sliders from backend state (UNIFIED mapping - one slider per backend param)
+  const sliderMap = {
+    'speed': state.led.case_speed,
+    'bright': state.led.brightness,
+    'sens': state.led.case_decay,
+    'decay': state.led.case_decay,
+    'smooth': state.led.case_decay,
+    'gain': state.led.brightness
+  };
+
+  for (const [id, backendVal] of Object.entries(sliderMap)) {
+    const slider = document.getElementById(id);
+    const valDisplay = slider?.closest('.slider-row')?.querySelector('.slider-val');
+    if (slider && backendVal !== undefined) {
+      // Skip updating this slider if user is currently dragging it
+      if (activeSliders.has(id)) {
+        continue;
+      }
+      // Also skip if this slider has focus
+      if (document.activeElement === slider) {
+        continue;
+      }
+
+      // Convert backend value to slider range (0-100)
+      let sliderVal;
+      if (id === 'speed') {
+        sliderVal = Math.min(100, Math.max(0, (backendVal || 1.0) * 10));
+      } else {
+        sliderVal = Math.min(100, Math.max(0, (backendVal || 0.8) * 100));
+      }
+      slider.value = sliderVal;
+      if (valDisplay) valDisplay.textContent = Math.round(sliderVal);
+    }
+  }
+
+  // Update color swatches
+  document.querySelectorAll('.color-swatch').forEach(swatch => {
+    const zone = swatch.dataset.zone;
+    const color = swatch.dataset.color;
+
+    // Get current color for zone (default to green if not set)
+    let currentColor;
+    if (zone === 'fans') {
+      currentColor = state.led.fan_color || 'green';
+    } else if (zone === 'fans2') {
+      currentColor = state.led.fan_color2 || 'cyan';
+    } else if (zone === 'case') {
+      currentColor = state.led.case_color || 'green';
+    } else {
+      currentColor = 'green';
+    }
+
+    // Check if this swatch should be active
+    let isActive = (color === currentColor);
+
+    if (isActive) {
+      swatch.classList.add('active');
+    } else {
+      swatch.classList.remove('active');
+    }
+  });
+
+  // Update 3D case color
+  update3DCase();
+}
+
+function log(msg) {
+  const logDiv = document.getElementById('log');
+  const line = document.createElement('div');
+  const ts = new Date().toLocaleTimeString('fr-FR');
+  line.textContent = `[${ts.slice(0, 8)}] ${msg}`;
+  logDiv.appendChild(line);
+  logDiv.scrollTop = logDiv.scrollHeight;
+
+  // Keep only last 60 lines
+  while (logDiv.children.length > 60) {
+    logDiv.removeChild(logDiv.firstChild);
+  }
+}
+
+// ── Event Handlers ─────────────────────────────────────────────────────────────
+document.querySelectorAll('[data-mode]').forEach(btn => {
+  btn.addEventListener('click', () => post(`/api/mode/${btn.dataset.mode}`));
+});
+
+document.querySelectorAll('[data-hud]').forEach(btn => {
+  btn.addEventListener('click', () => post(`/api/hud/${btn.dataset.hud}`));
+});
+
+// Audio viz mode handlers
+document.querySelectorAll('[data-viz]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const mode = btn.dataset.viz;
+
+    // Ambience est maintenant supporte par le backend (panel physique inclus)
+    state.viz_mode = mode;
+    updateVizButtons();
+    post(`/api/viz/${mode}`);
+    log(`viz mode → ${mode}`);
+  });
+});
+
+// Zone selection handlers
+document.querySelectorAll('.zone-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    ledZoneTarget = btn.dataset.zone;
+    document.querySelectorAll('.zone-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.zone === ledZoneTarget);
+      // Update button text to show selection
+      if (b.dataset.zone === ledZoneTarget) {
+        b.firstChild.textContent = '[x] ' + b.dataset.zone.toUpperCase();
+      } else {
+        b.firstChild.textContent = '[ ] ' + b.dataset.zone.toUpperCase();
+      }
+    });
+    log(`LED target → ${ledZoneTarget}`);
+  });
+});
+
+document.querySelectorAll('.led-mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const mode = btn.dataset.ledMode || btn.textContent.trim();
+
+    // Apply to selected zone(s)
+    if (ledZoneTarget === 'case' || ledZoneTarget === 'both') {
+      post(`/api/led/case_mode/${mode}`);
+    }
+    if (ledZoneTarget === 'fans' || ledZoneTarget === 'both') {
+      post(`/api/led/fan_mode/${mode}`);
+    }
+
+    log(`mode ${mode} → ${ledZoneTarget}`);
+  });
+});
+
+document.querySelectorAll('.scene-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.scene-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const sceneName = btn.dataset.scene;
+    log(`scene loaded: ${sceneName}`);
+    // Call API to apply scene
+    fetch(`/api/scene/${sceneName}`, {method: 'POST'})
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) {
+          log('scene applied successfully');
+        } else {
+          log('scene error: ' + (d.error || 'unknown'));
+        }
+      })
+      .catch(e => log('scene fetch error: ' + e));
+  });
+});
+
+document.querySelectorAll('.color-swatch').forEach(swatch => {
+  swatch.addEventListener('click', () => {
+    const color = swatch.dataset.color;
+    const zone = swatch.dataset.zone; // 'fans', 'fans2', or 'case'
+
+    if (!state.led) state.led = {};
+
+    if (color === 'rainbow') {
+      // Rainbow mode - apply to specific zone
+      if (zone === 'fans') {
+        post('/api/led/fan_mode/rainbow');
+        log('fans mode → rainbow');
+      } else if (zone === 'fans2') {
+        post('/api/led/fan_mode/rainbow');
+        log('fans2 mode → rainbow');
+      } else if (zone === 'case') {
+        post('/api/led/case_mode/rainbow');
+        log('case mode → rainbow');
+      }
+    } else {
+      // Solid color - apply to specific zone (use backend name)
+      if (zone === 'fans') {
+        post(`/api/led/fans_color/${color}`);
+        state.led.fan_color = color; // Store backend name
+        log(`fans color → ${color}`);
+      } else if (zone === 'fans2') {
+        post(`/api/led/fans_color2/${color}`);
+        state.led.fan_color2 = color; // Store backend name
+        log(`fans2 color → ${color}`);
+      } else if (zone === 'case') {
+        post(`/api/led/case_color/${color}`);
+        state.led.case_color = color; // Store backend name
+        log(`case color → ${color}`);
+      }
+    }
+
+    // Update UI immediately for feedback
+    updateLeds();
+    update3DCase();
+
+    swatch.animate([
+      { transform: 'scale(1.4)' },
+      { transform: 'scale(1)' }
+    ], { duration: 240 });
+  });
+});
+
+document.querySelectorAll('.toggle-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    btn.classList.toggle('active');
+    const txt = btn.textContent.replace(/^\[.\]\s*/, '');
+    btn.firstChild.textContent = (btn.classList.contains('active') ? '[x] ' : '[ ] ') + txt;
+    log(`hud ${txt} ${btn.classList.contains('active') ? 'on' : 'off'}`);
+  });
+});
+
+document.querySelectorAll('.slider-row input').forEach(input => {
+  // Track drag state
+  input.addEventListener('pointerdown', (e) => {
+    activeSliders.add(input.id);
+  });
+
+  input.addEventListener('pointerup', (e) => {
+    activeSliders.delete(input.id);
+  });
+
+  input.addEventListener('pointercancel', (e) => {
+    activeSliders.delete(input.id);
+  });
+
+  input.addEventListener('input', (e) => {
+    const row = e.target.closest('.slider-row');
+    const val = row.querySelector('.slider-val');
+    if (val) val.textContent = e.target.value + (e.target.id === 'lyrics-offset' ? 'ms' : '');
+  });
+
+  input.addEventListener('change', (e) => {
+    const id = e.target.id;
+    const val = e.target.value;
+    log(`param ${id} = ${val}`);
+
+    // UNIFIED mapping - PRIMARY sliders control backend params
+    const paramMap = {
+      'speed': 'case_speed',
+      'bright': 'brightness',
+      'sens': 'case_decay',
+      'decay': 'case_decay',
+      'smooth': 'case_decay',
+      'gain': 'brightness'
+    };
+
+    // Skip lyrics-offset (handled separately)
+    if (id === 'lyrics-offset') {
+      // Handle lyrics offset separately
+      fetch(`/api/lyrics-offset/${val}`, {method: 'POST'})
+        .catch(e => log('lyrics offset error: ' + e));
+      return;
+    }
+
+    const ledParam = paramMap[id] || id;
+
+    // Convertir les valeurs de slider vers les plages attendues par le backend
+    let sendVal = val;
+    if (ledParam === 'brightness') {
+      sendVal = (val / 100).toFixed(2);  // 0-100 → 0.0-1.0
+    } else if (ledParam === 'case_speed' || ledParam === 'fan_speed') {
+      sendVal = (val / 10).toFixed(1);  // 0-100 → 0.0-10.0
+    } else if (ledParam === 'case_decay') {
+      sendVal = (val / 100).toFixed(2);  // 0-100 → 0.0-1.0
+    }
+
+    fetch(`/api/led/${ledParam}/${sendVal}`, {method: 'POST'})
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) {
+          log(`LED param ${ledParam} = ${sendVal}`);
+        } else {
+          log(`LED error: ${d.error || 'unknown'}`);
+        }
+      })
+      .catch(e => log('slider error: ' + e));
+  });
+});
+
+// ── Gestion des lyrics ───────────────────────────────────────────────────────
+
+let currentLyricsInfo = {artist: '', title: '', source: ''};
+
+// Recherche manuelle de lyrics
+document.getElementById('lyrics-search-btn')?.addEventListener('click', async () => {
+  const artist = document.getElementById('lyrics-artist').value;
+  const title = document.getElementById('lyrics-title').value;
+
+  if (!artist || !title) {
+    log('[LYRICS] Error: artist and title required');
+    return;
+  }
+
+  log(`[LYRICS] Manual search: ${artist} - ${title}`);
+
+  try {
+    const res = await fetch('/api/lyrics-manual-search', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({artist, title})
+    });
+
+    const data = await res.json();
+
+    if (data.error) {
+      log(`[LYRICS] ${data.error}`);
+    } else {
+      log(`[LYRICS] Found: ${data.source} (score: ${Math.round(data.score)})`);
+      document.getElementById('lyrics-source-name').textContent = data.source;
+
+      // Afficher les premières lignes dans l'aperçu
+      if (data.lyrics && data.lyrics.synced && data.lyrics.synced.length > 0) {
+        const preview = document.getElementById('lyrics-current-line');
+        if (preview) {
+          preview.textContent = '▶ ' + data.lyrics.synced[0][1];
+        }
+      }
+    }
+  } catch (e) {
+    log(`[LYRICS] Error: ${e}`);
+  }
+});
+
+// Marquer comme incorrect (temporaire ou permanent)
+document.getElementById('lyrics-flag-btn')?.addEventListener('click', async (e) => {
+  const {artist, title, source} = currentLyricsInfo;
+
+  if (!artist || !title) {
+    log('[LYRICS] Error: no active lyrics to flag');
+    return;
+  }
+
+  // Shift+clic = permanent, clic simple = temporaire
+  const isPermanent = e.shiftKey;
+  const endpoint = isPermanent ? '/api/lyrics-flag-perm' : '/api/lyrics-flag-temp';
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        artist,
+        title,
+        source: source || 'unknown',
+        reason: isPermanent ? 'user_blacklisted' : 'user_skip'
+      })
+    });
+
+    if (res.ok) {
+      const feedback = isPermanent ? 'Blacklisted (permanent)' : 'Skipped (session)';
+      log(`[LYRICS] ${feedback} for ${artist} - ${title}`);
+
+      // Afficher feedback visuel
+      const fb = document.getElementById('lyrics-feedback');
+      if (fb) {
+        fb.querySelector('span').textContent = isPermanent
+          ? '✓ Blacklisted (permanent)'
+          : '✓ Skipped (session) - Shift+clic pour permanent';
+        fb.style.display = 'block';
+        setTimeout(() => fb.style.display = 'none', 3000);
+      }
+    }
+  } catch (err) {
+    log(`[LYRICS] Error: ${err}`);
+  }
+});
+
+// Note: lyrics_position events sont gérés dans le code SSE existant (ligne 1835)
+
+// Colorpickers removed - backend only accepts named colors (violet, cyan, blue, etc.)
+
+document.getElementById('savescene')?.addEventListener('click', () => {
+  // Call backend to save current state as a new scene
+  fetch('/api/scene/save', {method: 'POST'})
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        log('scene saved → ' + (d.scene_id || 'user_scene'));
+      } else {
+        log('scene error: ' + (d.error || 'unknown'));
+      }
+    })
+    .catch(e => log('scene save error: ' + e));
+  // Flash animation
+  document.getElementById('savescene').animate([
+    { filter: 'brightness(1.9)' },
+    { filter: 'brightness(1)' }
+  ], { duration: 280 });
+});
+
+// Transport buttons (play only - prev/next disabled due to no backend route)
+document.getElementById('play')?.addEventListener('click', function() {
+  // Toggle playing state for UI feedback only (backend controls actual playback)
+  state.playing = !state.playing;
+  this.textContent = state.playing ? '⏸ PAUSE' : '▶ PLAY';
+  this.classList.toggle('playing', state.playing);
+  log(state.playing ? 'playback started' : 'playback paused');
+});
+
+// prev and next are disabled - no backend routes available
+document.getElementById('prev')?.addEventListener('click', () => log('\u23ee prev \u2014 non disponible (pas de route backend)'));
+document.getElementById('next')?.addEventListener('click', () => log('\u23ed next \u2014 non disponible (pas de route backend)'));
+
+// \u2500\u2500 Clock & Uptime \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function updateClock() {
+  const clockEl = document.getElementById('clock');
+  if (clockEl) clockEl.textContent = new Date().toLocaleTimeString('fr-FR');
+
+  const elapsed = Math.floor((Date.now() - uptimeStart) / 1000);
+  const h = Math.floor(elapsed / 3600);
+  const m = Math.floor((elapsed % 3600) / 60);
+  const s = elapsed % 60;
+  const uptimeEl = document.getElementById('uptime');
+  if (uptimeEl) uptimeEl.textContent = [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// \u2500\u2500 Keyboard Shortcuts \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+const modeKeys = ['ascii_vhs', 'video', 'image', 'audio', 'blank'];
+
+window.addEventListener('keydown', (e) => {
+  // Ne pas intercepter la frappe dans les champs de saisie
+  if (e.target.matches('input, select, textarea')) return;
+
+  const k = e.key;
+
+  if (k >= '1' && k <= '5') {
+    const idx = parseInt(k) - 1;
+    if (modeKeys[idx]) post(`/api/mode/${modeKeys[idx]}`);
+  }
+
+  if (k === ' ') {
+    e.preventDefault();
+    document.getElementById('play')?.click();
+  }
+
+  if (k === 'ArrowUp' || k === 'ArrowDown') {
+    const bright = document.getElementById('bright');
+    if (bright) {
+      const val = parseInt(bright.value);
+      bright.value = Math.max(0, Math.min(100, val + (k === 'ArrowUp' ? 5 : -5)));
+      bright.dispatchEvent(new Event('input'));
+      bright.dispatchEvent(new Event('change'));
+    }
+  }
+
+  if (k.toLowerCase() === 'h') document.querySelector('.toggle-btn')?.click();
+  if (k.toLowerCase() === 's') document.getElementById('savescene')?.click();
+});
+
+// \u2500\u2500 Real-time State Updates (SSE) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// Payload \u00e0 plat c\u00f4t\u00e9 serveur : les champs se lisent directement (data.spectrum, data.seq, ...)
+let eventSource = null;
+
+function connectSSE() {
+  if (eventSource) {
+    try { eventSource.close(); } catch (err) {}
+  }
+
+  eventSource = new EventSource('/api/events');
+
+  eventSource.addEventListener('connected', () => {
+    log('[sse] real-time connection established');
+  });
+
+  eventSource.addEventListener('audio_spectrum', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.error) return;
+      if (Array.isArray(data.spectrum) && data.spectrum.length > 0) {
+        // 128 bandes log-spac\u00e9es backend \u2192 56 barres \u00e9cran (downsample, pas de troncature)
+        targetBands = downsample(data.spectrum, 56);
+        sseAudioActive = true;
+        sseAudioTimestamp = Date.now();
+      }
+      if (Array.isArray(data.waveform) && data.waveform.length > 0) {
+        targetWave = data.waveform;
+        if (audioData.wave.length !== targetWave.length) {
+          audioData.wave = targetWave.slice();
+        }
+      }
+      state.bpm = data.bpm || 0;
+      state.level = data.level || 0;
+      if (data.beat_seq !== undefined) state.beat_seq = data.beat_seq;
+      updateAudioMeters();
+    } catch (err) {
+      console.error('[sse] audio_spectrum error:', err);
+    }
+  });
+
+  eventSource.addEventListener('beat_event', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (state.beat_seq !== data.seq) state.beat_seq = data.seq;
+      lastBeatTime = performance.now();
+      const dot = document.getElementById('beatdot');
+      if (dot) {
+        dot.style.transform = 'scale(1.8)';
+        dot.style.boxShadow = '0 0 18px #2bff88';
+        setTimeout(() => {
+          dot.style.transform = 'scale(1)';
+          dot.style.boxShadow = '0 0 8px #2bff88';
+        }, 120);
+      }
+    } catch (err) {
+      console.error('[sse] beat_event error:', err);
+    }
+  });
+
+  eventSource.addEventListener('led_colors', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.hex) {
+        if (!state.led) state.led = {};
+        state.led.current_color = data.hex;
+        update3DCase();
+      }
+    } catch (err) {
+      console.error('[sse] led_colors error:', err);
+    }
+  });
+
+  eventSource.addEventListener('lyrics_position', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.artist || data.title) {
+        state.track = `${data.artist} - ${data.title}`;
+        currentLyricsInfo = {
+          artist: data.artist || '',
+          title: data.title || '',
+          source: data.source || 'auto'
+        };
+        const sourceEl = document.getElementById('lyrics-source-name');
+        if (sourceEl && data.source) sourceEl.textContent = data.source;
+        if (data.current_line) {
+          const lineEl = document.getElementById('lyrics-current-line');
+          if (lineEl) lineEl.textContent = '\u25b6 ' + data.current_line;
+        }
+        const tn = document.getElementById('trackname');
+        if (tn) tn.textContent = state.track;
+      }
+    } catch (err) {
+      console.error('[sse] lyrics_position error:', err);
+    }
+  });
+
+  eventSource.addEventListener('auto_mode_scores', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      state.auto = data;
+      const autoIndicator = document.getElementById('auto-indicator');
+      if (autoIndicator && data.current_mode) {
+        autoIndicator.textContent = `AUTO: ${data.current_mode}`;
+        autoIndicator.className = data.override_active ? 'warning' : 'active';
+      }
+    } catch (err) {
+      console.error('[sse] auto_mode_scores error:', err);
+    }
+  });
+
+  eventSource.onerror = () => {
+    log('[sse] connection lost \u2014 retry in 3s');
+    sseAudioActive = false;
+    try { eventSource.close(); } catch (err) {}
+    setTimeout(connectSSE, 3000);
+  };
+}
+
+// \u2500\u2500 Startup \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+log('[ui] phosphor interface initialized');
+connectSSE();
+poll();
+setInterval(poll, 500);
+</script>
+</body>
+</html>

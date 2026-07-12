@@ -59,14 +59,24 @@ def _ensure_server() -> bool:
                 if openrgb_exe is None:
                     print("[LED] OpenRGB introuvable — LEDs désactivées")
                     return False
+                print("[LED] Démarrage OpenRGB...")
                 _server = subprocess.Popen(
                     [openrgb_exe, "--server", "--noautoconnect"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
-                time.sleep(1.5)
+                # Attendre plus longtemps pour qu'OpenRGB démarre correctement
+                for wait_time in [1.0, 0.5, 0.5, 0.5]:  # Total 2.5 secondes
+                    time.sleep(wait_time)
+                    if _is_openrgb_running():
+                        break
+                print("[LED] OpenRGB démarré")
+
+            print("[LED] Connexion au client OpenRGB...")
             from openrgb import OpenRGBClient
             client = OpenRGBClient()   # connexion dans le constructeur
+            print(f"[LED] {len(client.devices)} devices détectés")
+
             for d in client.devices:
                 if "TUF" in d.name or "B550" in d.name or "Aura" in d.name:
                     _device = d
@@ -76,8 +86,14 @@ def _ensure_server() -> bool:
             # set_mode : essaie "direct" puis "Direct" (sensibilité à la casse selon version)
             try:
                 _device.set_mode("direct")
+                print("[LED] Mode 'direct' appliqué")
             except Exception:
-                _device.set_mode("Direct")
+                try:
+                    _device.set_mode("Direct")
+                    print("[LED] Mode 'Direct' appliqué")
+                except Exception as e:
+                    print(f"[LED] Impossible de définir le mode direct: {e}")
+
             print(f"[LED] {len(_device.leds)} LEDs sur '{_device.name}' — mode direct OK")
             return True
         except Exception as e:

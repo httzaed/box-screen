@@ -26,10 +26,17 @@ _MUTED   = (107,  94, 138, 255)
 _TEXT    = (212, 200, 240, 255)
 _BORDER  = (42,  31,  80, 255)
 
-_MODES       = ["ascii_vhs", "video", "image", "audio", "blank"]
-_HUD_STYLES  = ["full", "terminal", "clock", "lyrics", "split", "tiles", "matrix", "audio_viz", "blank"]
+# Import unified mode system
+from modes import (
+    DISPLAY_MODES as _MODES,
+    HUD_STYLES as _HUD_STYLES,
+    LED_MODES as _ALL_LED_MODES,
+    LED_COLORS
+)
+
+# Simplified LED modes for dashboard UI (must match modes.py LED_MODES)
 _CASE_MODES  = ["off", "wave", "beat"]
-_FAN_MODES   = ["off", "spin_bpm", "spin_fixed", "static"]
+_FAN_MODES   = ["off", "spin", "static", "beat_pulse"]
 _LED_COLORS  = ["violet", "cyan", "blue", "teal", "green", "yellow", "orange", "red", "pink", "white"]
 _LED_PREVIEWS = {
     "violet": (180,   0, 255, 255),
@@ -59,6 +66,17 @@ _state = {
     "beat_seq": 0,
     "led": {"case_mode": "beat", "fan_mode": "spin_bpm",
             "case_color": "violet", "fan_color": "violet"},
+    # Track info
+    "track":    None,
+    "playing":  False,
+    "position": 0,
+    # Lyrics
+    "lyrics":   None,
+    "lyrics_line": "",
+    "lyrics_position": 0,
+    # Auto mode
+    "auto":     {},
+    "auto_active": False,
 }
 _last_beat_seq = -1
 _beat_flash_until = 0.0
@@ -120,6 +138,20 @@ TAG_LVL_TEXT  = "lvl_text"
 TAG_LVL_BAR   = "lvl_bar"
 TAG_BEAT_IND  = "beat_indicator"
 TAG_STATUS    = "status_text"
+# Track info tags
+TAG_TRACK     = "track_text"
+TAG_PLAYING   = "playing_indicator"
+TAG_POSITION  = "position_text"
+# Lyrics tags
+TAG_LYRICS    = "lyrics_text"
+TAG_LYRICS_PROGRESS = "lyrics_progress"
+# Lyrics Manager tags
+TAG_LYR_ARTIST = "lyr_artist"
+TAG_LYR_TITLE  = "lyr_title"
+TAG_LYR_FEEDBACK = "lyr_feedback"
+# Auto mode tags
+TAG_AUTO_MODE = "auto_mode_text"
+TAG_AUTO_SCORE = "auto_score_text"
 
 
 # ── Callbacks boutons ──────────────────────────────────────────────────────────
@@ -132,6 +164,82 @@ def _on_mode(sender, app_data, user_data):
 
 def _on_hud(sender, app_data, user_data):
     _post(f"/api/hud/{user_data}")
+
+
+def _on_lyrics_search(sender, app_data, user_data):
+    """Recherche manuelle de lyrics"""
+    artist = dpg.get_value(TAG_LYR_ARTIST)
+    title = dpg.get_value(TAG_LYR_TITLE)
+
+    if not artist or not title:
+        dpg.set_value(TAG_LYR_FEEDBACK, "Error: artist and title required")
+        return
+
+    try:
+        import urllib.request
+        import json
+        data = json.dumps({"artist": artist, "title": title}).encode()
+        req = urllib.request.Request(
+            f"{_HTTP_BASE}/api/lyrics-manual-search",
+            data=data,
+            headers={'Content-Type': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            result = json.loads(r.read())
+            if result.get("error"):
+                dpg.set_value(TAG_LYR_FEEDBACK, f"Error: {result['error']}")
+            else:
+                dpg.set_value(TAG_LYR_FEEDBACK, f"Found: {result['source']} ({result['score']:.0f}pts)")
+    except Exception as e:
+        dpg.set_value(TAG_LYR_FEEDBACK, f"Error: {e}")
+
+
+def _on_lyrics_flag_temp(sender, app_data, user_data):
+    """Skip temporaire (session)"""
+    lyrics = dpg.get_value(TAG_LYRICS) if dpg.does_item_exist(TAG_LYRICS) else ""
+    # Récupérer les infos depuis l'état global si dispo
+    try:
+        import urllib.request
+        import json
+
+        # Pour l'instant, utilise une valeur placeholder car on n'a pas accès
+        # aux détails de la source depuis l'UI simple
+        data = json.dumps({
+            "artist": "current",
+            "title": "track",
+            "source": "unknown"
+        }).encode()
+        req = urllib.request.Request(
+            f"{_HTTP_BASE}/api/lyrics-flag-temp",
+            data=data,
+            headers={'Content-Type': 'application/json'}
+        )
+        urllib.request.urlopen(req, timeout=5)
+        dpg.set_value(TAG_LYR_FEEDBACK, "Skipped (session)")
+    except Exception as e:
+        dpg.set_value(TAG_LYR_FEEDBACK, f"Error: {e}")
+
+
+def _on_lyrics_flag_perm(sender, app_data, user_data):
+    """Blacklist permanent"""
+    try:
+        import urllib.request
+        import json
+        data = json.dumps({
+            "artist": "current",
+            "title": "track",
+            "source": "unknown",
+            "reason": "user_blacklisted"
+        }).encode()
+        req = urllib.request.Request(
+            f"{_HTTP_BASE}/api/lyrics-flag-perm",
+            data=data,
+            headers={'Content-Type': 'application/json'}
+        )
+        urllib.request.urlopen(req, timeout=5)
+        dpg.set_value(TAG_LYR_FEEDBACK, "Blacklisted (permanent)")
+    except Exception as e:
+        dpg.set_value(TAG_LYR_FEEDBACK, f"Error: {e}")
 
 
 # ── Boucle de polling ──────────────────────────────────────────────────────────
@@ -166,6 +274,67 @@ def _poll_loop():
             else:
                 dpg.configure_item(TAG_BEAT_IND, color=[*_ORANGE[:3], 40])
 
+            # Track info
+            track = s.get("track")
+            playing = s.get("playing", False)
+            position = s.get("position", 0)
+
+            if track:
+                dpg.set_value(TAG_TRACK, track)
+            else:
+                dpg.set_value(TAG_TRACK, "No track playing")
+
+            # Playing indicator
+            dpg.configure_item(TAG_PLAYING,
+                color=list(_GREEN) if playing else [*_GREEN[:3], 40])
+
+            # Position display
+            pos_mins = int(position // 60)
+            pos_secs = int(position % 60)
+            dpg.set_value(TAG_POSITION, f"{pos_mins}:{pos_secs:02d}")
+
+            # Lyrics
+            lyrics = s.get("lyrics") or {}
+            if lyrics and not lyrics.get("loading", False):
+                # Get current line from lyrics lines
+                lines = lyrics.get("lines", [])
+                current_idx = lyrics.get("current_idx", 0)
+
+                if lines and 0 <= current_idx < len(lines):
+                    current_line = lines[current_idx].get("text", "")
+                    dpg.set_value(TAG_LYRICS, current_line)
+
+                    # Progress through lyrics
+                    progress = (current_idx + 1) / len(lines) if lines else 0
+                    dpg.set_value(TAG_LYRICS_PROGRESS, progress)
+                else:
+                    dpg.set_value(TAG_LYRICS, "No lyrics available")
+                    dpg.set_value(TAG_LYRICS_PROGRESS, 0.0)
+            else:
+                if lyrics and lyrics.get("loading", False):
+                    dpg.set_value(TAG_LYRICS, "Loading lyrics...")
+                else:
+                    dpg.set_value(TAG_LYRICS, "No lyrics")
+
+            # Auto mode status
+            auto = s.get("auto", {})
+            if auto:
+                current_mode = auto.get("current_mode", "Unknown")
+                scores = auto.get("scores", {})
+
+                # Show current auto mode
+                mode_label = current_mode.replace("_", " ").upper()
+                dpg.set_value(TAG_AUTO_MODE, f"AUTO: {mode_label}")
+
+                # Show top scoring mode
+                if scores:
+                    best_mode = max(scores.keys(), key=lambda k: scores[k])
+                    best_score = scores[best_mode]
+                    dpg.set_value(TAG_AUTO_SCORE, f"{best_mode}: {best_score:.0f}%")
+            else:
+                dpg.set_value(TAG_AUTO_MODE, "AUTO: OFF")
+                dpg.set_value(TAG_AUTO_SCORE, "")
+
             # Boutons actifs
             for m in _MODES:
                 tag = f"btn_mode_{m}"
@@ -191,6 +360,32 @@ def _poll_loop():
                 tag = f"btn_fan_{m}"
                 if dpg.does_item_exist(tag):
                     _set_btn_theme(tag, m == led.get("fan_mode"), kind="hud")
+
+            # LED colors - highlight active colors
+            for c in _LED_COLORS:
+                # Case primary colors
+                tag = f"btn_case_col_{c}"
+                if dpg.does_item_exist(tag):
+                    active = (c == led.get("case_color"))
+                    _set_color_btn_theme(tag, active, c)
+
+                # Case secondary colors
+                tag = f"btn_case_col2_{c}"
+                if dpg.does_item_exist(tag):
+                    active = (c == led.get("case_color2"))
+                    _set_color_btn_theme(tag, active, c)
+
+                # Fans primary colors
+                tag = f"btn_fan_col_{c}"
+                if dpg.does_item_exist(tag):
+                    active = (c == led.get("fan_color"))
+                    _set_color_btn_theme(tag, active, c)
+
+                # Fans secondary colors
+                tag = f"btn_fan_col2_{c}"
+                if dpg.does_item_exist(tag):
+                    active = (c == led.get("fan_color2"))
+                    _set_color_btn_theme(tag, active, c)
 
             mode = s.get("mode", "?")
             hud  = s.get("hud",  "?")
@@ -254,6 +449,26 @@ def _set_btn_theme(tag, active: bool, kind: str):
         dpg.bind_item_theme(tag, _theme_hud_active if active else _theme_hud_inactive)
 
 
+def _set_color_btn_theme(tag, active: bool, color_name: str):
+    """Highlight active color button with white border."""
+    if active:
+        # Create a theme with white border for active color
+        with dpg.theme() as t:
+            with dpg.theme_component(dpg.mvButton):
+                base_color = list(_LED_PREVIEWS.get(color_name, _GREEN))
+                dpg.add_theme_color(dpg.mvThemeCol_Button, base_color)
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, base_color)
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, base_color)
+                # Add white border for active state
+                dpg.add_theme_color(dpg.mvThemeCol_Border, (255, 255, 255, 255))
+        dpg.bind_item_theme(tag, t)
+    else:
+        # Use the standard color button theme
+        col = list(_LED_PREVIEWS.get(color_name, _GREEN))
+        t = _make_color_btn_theme(col)
+        dpg.bind_item_theme(tag, t)
+
+
 # ── Construction UI ────────────────────────────────────────────────────────────
 
 def _build_ui():
@@ -277,7 +492,7 @@ def _build_ui():
 
     _build_themes()
 
-    W, H = 540, 680
+    W, H = 540, 900
 
     with dpg.window(label="Box Screen", tag=TAG_WIN,
                     width=W, height=H, no_resize=True,
@@ -289,6 +504,69 @@ def _build_ui():
                      color=list(_MUTED))
         dpg.add_separator()
         dpg.add_spacer(height=4)
+
+        # ── Track Info ────────────────────────────────────────────────────────
+        with dpg.child_window(height=80, border=True):
+            with dpg.group(horizontal=True):
+                dpg.add_text("NOW PLAYING", color=list(_MUTED))
+                dpg.add_spacer(width=8)
+                # Playing indicator
+                dpg.add_text("●", tag=TAG_PLAYING, color=[*_GREEN[:3], 40])
+
+            dpg.add_spacer(height=4)
+
+            # Track name
+            dpg.add_text("No track", tag=TAG_TRACK, color=list(_TEXT),
+                         wrap=-1)
+
+            dpg.add_spacer(height=4)
+
+            # Position/Time
+            with dpg.group(horizontal=True):
+                dpg.add_text("0:00", tag=TAG_POSITION, color=list(_MUTED))
+                dpg.add_spacer(width=-1)
+
+        dpg.add_spacer(height=8)
+
+        # ── Lyrics ────────────────────────────────────────────────────────────
+        with dpg.child_window(height=100, border=True):
+            dpg.add_text("LYRICS", color=list(_MUTED))
+            dpg.add_spacer(height=4)
+
+            # Current lyrics line
+            dpg.add_text("No lyrics", tag=TAG_LYRICS, color=list(_ACCENT),
+                         wrap=-1)
+
+            dpg.add_spacer(height=8)
+
+            # Lyrics progress
+            _prog_theme_lyrics = _make_progress_theme(_ACCENT)
+            pb = dpg.add_progress_bar(tag=TAG_LYRICS_PROGRESS, default_value=0.0,
+                                      width=-1, height=4)
+            dpg.bind_item_theme(pb, _prog_theme_lyrics)
+
+        dpg.add_spacer(height=8)
+
+        # ── Lyrics Manager ─────────────────────────────────────────────────────
+        with dpg.child_window(height=120, border=True):
+            dpg.add_text("LYRICS MANAGER", color=list(_MUTED))
+            dpg.add_spacer(height=4)
+
+            # Recherche manuelle
+            with dpg.group(horizontal=True):
+                dpg.add_input_text(label="Artist", tag=TAG_LYR_ARTIST, width=100)
+                dpg.add_input_text(label="Title", tag=TAG_LYR_TITLE, width=140)
+                dpg.add_button(label="Search", callback=_on_lyrics_search, width=70)
+
+            # Validation
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="Skip Session", callback=_on_lyrics_flag_temp, width=110)
+                dpg.add_button(label="Blacklist", callback=_on_lyrics_flag_perm, width=110)
+
+            # Feedback
+            dpg.add_text("", tag=TAG_LYR_FEEDBACK, color=list(_GREEN))
+
+        dpg.add_spacer(height=8)
 
         # ── Mode ───────────────────────────────────────────────────────────
         with dpg.child_window(height=80, border=True):
@@ -353,8 +631,8 @@ def _build_ui():
         dpg.add_spacer(height=8)
 
         # ── LEDs ───────────────────────────────────────────────────────────
-        with dpg.child_window(height=140, border=True):
-            # Case
+        with dpg.child_window(height=200, border=True):
+            # Case mode + colors
             with dpg.group(horizontal=True):
                 dpg.add_text("CASE", color=list(_MUTED))
                 dpg.add_spacer(width=8)
@@ -364,6 +642,7 @@ def _build_ui():
                                    callback=_on_led, user_data=("case", m))
                     dpg.bind_item_theme(tag, _theme_hud_inactive)
                 dpg.add_spacer(width=12)
+                # Primary colors
                 for c in _LED_COLORS:
                     tag = f"btn_case_col_{c}"
                     col = list(_LED_PREVIEWS[c])
@@ -374,17 +653,35 @@ def _build_ui():
 
             dpg.add_spacer(height=6)
 
-            # Fans
+            # Case secondary colors (color2)
+            with dpg.group(horizontal=True):
+                dpg.add_text("CASE 2", color=list(_MUTED))
+                dpg.add_spacer(width=8)
+                dpg.add_spacer(width=130)  # Skip mode buttons space
+                dpg.add_spacer(width=12)
+                # Secondary colors
+                for c in _LED_COLORS:
+                    tag = f"btn_case_col2_{c}"
+                    col = list(_LED_PREVIEWS[c])
+                    dpg.add_button(label=" ", tag=tag, width=18, height=24,
+                                   callback=_on_led, user_data=("case_color2", c))
+                    _t = _make_color_btn_theme(col)
+                    dpg.bind_item_theme(tag, _t)
+
+            dpg.add_spacer(height=10)
+
+            # Fans mode + colors
             with dpg.group(horizontal=True):
                 dpg.add_text("FANS", color=list(_MUTED))
                 dpg.add_spacer(width=8)
-                fan_labels = {"off":"OFF","spin_bpm":"BPM","spin_fixed":"FIXED","static":"STATIC"}
+                fan_labels = {"off":"OFF","spin":"SPIN","static":"STATIC","beat_pulse":"BEAT"}
                 for m in _FAN_MODES:
                     tag = f"btn_fan_{m}"
                     dpg.add_button(label=fan_labels[m], tag=tag, width=52, height=24,
                                    callback=_on_led, user_data=("fans", m))
                     dpg.bind_item_theme(tag, _theme_hud_inactive)
                 dpg.add_spacer(width=12)
+                # Primary colors
                 for c in _LED_COLORS:
                     tag = f"btn_fan_col_{c}"
                     col = list(_LED_PREVIEWS[c])
@@ -392,6 +689,35 @@ def _build_ui():
                                    callback=_on_led, user_data=("fans_color", c))
                     _t = _make_color_btn_theme(col)
                     dpg.bind_item_theme(tag, _t)
+
+            dpg.add_spacer(height=6)
+
+            # Fans secondary colors (color2)
+            with dpg.group(horizontal=True):
+                dpg.add_text("FANS 2", color=list(_MUTED))
+                dpg.add_spacer(width=8)
+                dpg.add_spacer(width=130)  # Skip mode buttons space
+                dpg.add_spacer(width=12)
+                # Secondary colors
+                for c in _LED_COLORS:
+                    tag = f"btn_fan_col2_{c}"
+                    col = list(_LED_PREVIEWS[c])
+                    dpg.add_button(label=" ", tag=tag, width=18, height=24,
+                                   callback=_on_led, user_data=("fans_color2", c))
+                    _t = _make_color_btn_theme(col)
+                    dpg.bind_item_theme(tag, _t)
+
+        dpg.add_spacer(height=8)
+
+        # ── Auto Mode Status ────────────────────────────────────────────────────
+        with dpg.child_window(height=60, border=True):
+            dpg.add_text("AUTO MODE", color=list(_MUTED))
+            dpg.add_spacer(height=4)
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("AUTO: OFF", tag=TAG_AUTO_MODE, color=list(_ACCENT))
+                dpg.add_spacer(width=-1)
+                dpg.add_text("", tag=TAG_AUTO_SCORE, color=list(_MUTED))
 
         dpg.add_spacer(height=8)
 
@@ -429,7 +755,7 @@ def run_embedded(switch_fn, switch_hud_fn, get_state_fn, set_led_fn=None):
 
 def _run():
     dpg.create_context()
-    dpg.create_viewport(title="Box Screen", width=560, height=700,
+    dpg.create_viewport(title="Box Screen", width=560, height=920,
                         small_icon="", large_icon="",
                         resizable=False)
     dpg.setup_dearpygui()

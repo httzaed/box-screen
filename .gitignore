@@ -25,6 +25,10 @@ _mount_probe*.txt
 !assets/*.png
 !assets/*.jpg
 
+# Rust build artifacts
+dashboard_rs/target/
+
 # OS
 .DS_Store
 Thumbs.db
+test_media.ps1

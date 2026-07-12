@@ -29,32 +29,29 @@ _LEARNING_FILE = _HERE / "auto_mode_learning.json"
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
-# Modes disponibles (doit matcher MODES dans launcher.py)
-_MODES = ["ascii_vhs", "video", "image", "audio", "blank"]
-_HUD_STYLES = ["full", "terminal", "clock", "split", "tiles", "matrix", "lyrics", "audio_viz", "blank"]
+# ── Import unified mode system ─────────────────────────────────────────────────────
+from modes import (
+    ModeKey, ModeCombo, LEDConfig,
+    MODE_COMBOS, get_mode, recommend_mode, apply_led_config
+)
 
-# Combinaisons mode+hud valides
-_MODE_COMBINATIONS = {
-    "video+lyrics": ("video", "lyrics"),
-    "video": ("video", "full"),
-    "image+lyrics": ("image", "lyrics"),
-    "image": ("image", "full"),
-    "lyrics": ("blank", "lyrics"),
-    "audio_viz": ("blank", "audio_viz"),
-    "ascii_hud": ("ascii_vhs", "terminal"),
-    "blank": ("blank", "blank"),
-}
-
-# LED configs par combinaison
-_LED_CONFIGS = {
-    "video+lyrics": {"case": "static", "fans": "beat_pulse"},
-    "video": {"case": "static", "fans": "beat_pulse"},
-    "image+lyrics": {"case": "static", "fans": "beat_pulse"},
-    "image": {"case": "static", "fans": "beat"},
-    "lyrics": {"case": "static", "fans": "beat_pulse"},
-    "audio_viz": {"case": "static", "fans": "beat_pulse"},
-    "ascii_hud": {"case": "beat", "fans": "spin"},
-    "blank": {"case": "off", "fans": "off"},
+# Mapping to unify old and new mode systems
+# All modes are preserved, the mapping just helps with transitions
+_MODE_KEY_MAPPING = {
+    # Legacy mappings for compatibility
+    "video+lyrics": "video+lyrics",
+    "video": "video",
+    "lyrics_cascade": "lyrics_cascade",
+    "lyrics": "lyrics",
+    "audio_viz": "audio_viz",
+    "ascii_hud": "ascii_hud",
+    "blank": "blank",
+    "image": "image",
+    "image+lyrics": "image+lyrics",
+    # New simplified modes (aliases for common use)
+    "audio": "audio_viz",  # audio -> audio_viz
+    "idle": "blank",      # idle -> blank
+    "manual": "ascii_hud", # manual -> ascii_hud
 }
 
 # Hystérésis
@@ -264,11 +261,13 @@ def detect_context():
 def _base_scores(context, learning_weights):
     """
     Calcule les scores de base pour chaque mode selon le contexte.
-
-    Returns:
-        dict: {mode_key: score_0_100}
+    Restauré avec tous les modes originaux.
     """
-    scores = {k: 0.0 for k in _MODE_COMBINATIONS.keys()}
+    scores = {
+        "video+lyrics": 0.0, "video": 0.0, "image+lyrics": 0.0, "image": 0.0,
+        "lyrics_cascade": 0.0, "lyrics": 0.0, "audio_viz": 0.0,
+        "ascii_hud": 0.0, "blank": 0.0
+    }
 
     # Poids ajustables par apprentissage (défaut: 1.0)
     w_video = learning_weights.get("w_video", 1.0)
@@ -301,18 +300,33 @@ def _base_scores(context, learning_weights):
             base -= 15.0 * w_night  # Pénalité nocturne
         scores["video"] = base * w_video
 
-    # ── LYRICS ───────────────────────────────────────────────────────────────────
+    # ── LYRICS_CASCADE ───────────────────────────────────────────────────────────
+    # Mode intelligent qui adapte l'affichage selon: lyrics -> audio_viz -> terminal
+    if has_music:
+        base = 75.0
+        # Gros bonus si lyrics syncés
+        if has_lyrics and lyrics_synced:
+            base += 15.0
+        # Bonus si BPM stable
+        if context.get("bpm_stable", False):
+            base += 10.0
+        # Bonus si niveau audio élevé
+        if context.get("music_level_ema", 0) > 0.1:
+            base += 5.0
+        scores["lyrics_cascade"] = base * w_music
+
+    # ── LYRICS (legacy, remplacé par lyrics_cascade) ───────────────────────────
     if has_music and has_lyrics:
-        base = 70.0
+        base = 65.0  # Plus bas que lyrics_cascade
         if lyrics_synced:
-            base += 20.0  # Gros bonus pour synced
+            base += 15.0
         else:
-            base -= 10.0  # Pénalité pour plain lyrics
+            base -= 10.0
         scores["lyrics"] = base * w_music * (w_lyrics_synced if lyrics_synced else w_lyrics_plain)
 
     # ── AUDIO_VIZ ─────────────────────────────────────────────────────────────────
     if has_music:
-        base = 50.0
+        base = 45.0  # Plus bas que lyrics_cascade
         # Bonus si BPM stable (meilleur viz)
         if context.get("bpm_stable", False):
             base += 15.0
@@ -367,15 +381,15 @@ def _should_change_mode(current_mode, current_score, new_mode, new_score, time_s
     Returns:
         bool: True si le changement est autorisé
     """
-    # Pas de mode actuel → changement autorisé
+    # Pas de mode actuel -> changement autorisé
     if current_mode is None:
         return True
 
-    # Même mode → pas de changement
+    # Même mode -> pas de changement
     if new_mode == current_mode:
         return False
 
-    # Score inférieur → pas de changement
+    # Score inférieur -> pas de changement
     if new_score <= current_score:
         return False
 
@@ -506,11 +520,21 @@ def determine_mode(context):
     Détermine le mode approprié selon le contexte avec scoring et hystérésis.
 
     Returns:
-        ((mode, hud), led_config)  # API compatible
+        (display_mode, hud_style), led_config  # API compatible
     """
     global _state, _transition_to_idle, _last_music_mode
 
     with _lock:
+        # Mode initial forcé: lyrics_cascade par défaut au premier démarrage
+        if _state.get("current_mode") is None:
+            _state["current_mode"] = "lyrics_cascade"
+            _state["current_score"] = 100.0
+            _state["last_change_time"] = time.monotonic()
+            mode_combo = get_mode("lyrics_cascade")
+            _state["context"] = context
+            print("[AUTO] Mode initial forcé: lyrics_cascade")
+            return (mode_combo.display, mode_combo.hud), mode_combo.led
+
         # Charger les poids d'apprentissage
         _load_learning()
 
@@ -519,8 +543,8 @@ def determine_mode(context):
         had_music_before = _last_music_mode is not None
 
         if had_music_before and not has_music_now:
-            # La musique s'arrête → enregistrer le dernier mode musical
-            if _state["current_mode"] in ("lyrics", "audio_viz", "video+lyrics"):
+            # La musique s'arrête -> enregistrer le dernier mode musical
+            if _state["current_mode"] in ("lyrics", "audio_viz", "lyrics_cascade", "video+lyrics"):
                 _last_music_mode = _state["current_mode"]
                 _transition_to_idle = True
                 print(f"[AUTO] Transition: musique finie, dernier mode: {_last_music_mode}")
@@ -531,7 +555,7 @@ def determine_mode(context):
             print(f"[AUTO] Transition: musique reprise, fin transition idle")
 
         # Mettre à jour last_music_mode si on a de la musique
-        if has_music_now and _state["current_mode"] in ("lyrics", "audio_viz", "video+lyrics"):
+        if has_music_now and _state["current_mode"] in ("lyrics", "audio_viz", "lyrics_cascade", "video+lyrics"):
             _last_music_mode = _state["current_mode"]
 
         # Calculer les scores
@@ -564,24 +588,25 @@ def determine_mode(context):
             _state["last_change_time"] = time.monotonic()
 
             # Loguer la décision
-            mode_combo = _MODE_COMBINATIONS[best_mode]
-            _log_decision(context, mode_combo[0], mode_combo[1], override=False)
+            mode_combo = get_mode(best_mode)  # type: ignore
+            _log_decision(context, mode_combo.display, mode_combo.hud, override=False)
 
             # Si on arrive vraiment sur ascii_hud, terminer la transition
             if best_mode == "ascii_hud":
                 _transition_to_idle = False
         else:
             # Garder le mode actuel
-            best_mode = current_mode or "ascii_hud"  # Fallback
+            best_mode = current_mode or "lyrics"  # Fallback par défaut
 
-        # Récupérer la config
-        mode_combo = _MODE_COMBINATIONS.get(best_mode, _MODE_COMBINATIONS["ascii_hud"])
-        led_config = _LED_CONFIGS.get(best_mode, _LED_CONFIGS["ascii_hud"])
+        # Récupérer la config depuis le système unifié
+        mode_combo = get_mode(best_mode)  # type: ignore
+        if not mode_combo:
+            mode_combo = get_mode("ascii_hud")  # Fallback
 
         _state["scores"] = scores
         _state["context"] = context
 
-        return mode_combo, led_config
+        return (mode_combo.display, mode_combo.hud), mode_combo.led
 
 
 # ─── API publique (compatibilité avec code existant) ─────────────────────────────
@@ -676,7 +701,7 @@ if __name__ == "__main__":
     }
     scores = _base_scores(ctx_test, {})
     best = max(scores.keys(), key=lambda k: scores[k])
-    print(f"Musique + Lyrics synced → {best} (score: {scores[best]:.1f})")
+    print(f"Musique + Lyrics synced -> {best} (score: {scores[best]:.1f})")
 
     # Scénario 2: Vidéo qui joue
     ctx_test = {
@@ -694,7 +719,7 @@ if __name__ == "__main__":
     }
     scores = _base_scores(ctx_test, {})
     best = max(scores.keys(), key=lambda k: scores[k])
-    print(f"Vidéo qui joue → {best} (score: {scores[best]:.1f})")
+    print(f"Vidéo qui joue -> {best} (score: {scores[best]:.1f})")
 
     # Scénario 3: Nuit, silence
     ctx_test = {
@@ -712,14 +737,14 @@ if __name__ == "__main__":
     }
     scores = _base_scores(ctx_test, {})
     best = max(scores.keys(), key=lambda k: scores[k])
-    print(f"Nuit + Silence → {best} (score: {scores[best]:.1f})")
+    print(f"Nuit + Silence -> {best} (score: {scores[best]:.1f})")
 
     # Test hystérésis
     print("\n--- Test hystérésis ---")
     print(f"Marge requise: {_HYSTERESIS_MARGIN}%")
     print(f"Temps minimum: {_HYSTERESIS_MIN_TIME}s")
 
-    # Scénario: lyrics → audio_viz (ne devrait pas changer immédiatement)
+    # Scénario: lyrics -> audio_viz (ne devrait pas changer immédiatement)
     _state["current_mode"] = "lyrics"
     _state["current_score"] = 90.0
     _state["last_change_time"] = time.monotonic() - 5  # 5s seulement
@@ -747,7 +772,7 @@ if __name__ == "__main__":
         scores[best],
         5.0  # 5s seulement
     )
-    print(f"Lyrics → Audio_viz (5s, marge {scores[best] - _state['current_score']:.1f}): {'CHANGE' if should else 'KEEP'}")
+    print(f"Lyrics -> Audio_viz (5s, marge {scores[best] - _state['current_score']:.1f}): {'CHANGE' if should else 'KEEP'}")
 
     # Après 15s, devrait changer
     should = _should_change_mode(
@@ -757,6 +782,6 @@ if __name__ == "__main__":
         scores[best],
         15.0  # 15s
     )
-    print(f"Lyrics → Audio_viz (15s, marge {scores[best] - _state['current_score']:.1f}): {'CHANGE' if should else 'KEEP'}")
+    print(f"Lyrics -> Audio_viz (15s, marge {scores[best] - _state['current_score']:.1f}): {'CHANGE' if should else 'KEEP'}")
 
     print("\n[AUTO] Test terminé")

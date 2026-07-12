@@ -37,14 +37,14 @@ def _open_device():
     if dev is None:
         raise RuntimeError("Panel introuvable — branche le câble USB")
 
-    print("  → Reset device...")
+    print("  -> Reset device...")
     try:
         dev.reset()
         time.sleep(0.5)  # Plus long après reset
     except Exception:
         pass
 
-    print("  → Configuration...")
+    print("  -> Configuration...")
     try:
         dev.set_configuration()
     except usb.core.USBError:
@@ -53,7 +53,7 @@ def _open_device():
     cfg = dev.get_active_configuration()
     intf = cfg[(0, 0)]
 
-    print("  → Claim interface...")
+    print("  -> Claim interface...")
     try:
         usb.util.claim_interface(dev, intf.bInterfaceNumber)
     except usb.core.USBError:
@@ -75,20 +75,20 @@ def _open_device():
     if ep_out is None or ep_in is None:
         raise RuntimeError("Endpoints introuvables")
 
-    print("  → Endpoints OK")
+    print("  -> Endpoints OK")
     return dev, intf, ep_out, ep_in
 
 
 def _handshake(ep_out, ep_in):
     """Handshake with panel - optional, continues on failure."""
-    print("  → Handshake...")
+    print("  -> Handshake...")
     for attempt in range(2):
         try:
             ep_out.write(_HANDSHAKE_PAYLOAD, timeout=2000)
             resp = bytes(ep_in.read(512, timeout=2000))
 
             if len(resp) >= 9 and resp[0] == 3 and resp[1] == 0xFF and resp[8] == 1:
-                print("  → Handshake OK")
+                print("  -> Handshake OK")
                 return resp
 
             if attempt < 1:
@@ -97,16 +97,16 @@ def _handshake(ep_out, ep_in):
             if attempt < 1:
                 time.sleep(0.3)
             else:
-                print("  → Handshake timeout (continu sans)")
+                print("  -> Handshake timeout (continu sans)")
                 return None
         except Exception as e:
             if attempt < 1:
                 time.sleep(0.3)
             else:
-                print(f"  → Handshake échoué: {e} (continu sans)")
+                print(f"  -> Handshake échoué: {e} (continu sans)")
                 return None
 
-    print("  → Handshake ignoré (panel peut fonctionner quand même)")
+    print("  -> Handshake ignoré (panel peut fonctionner quand même)")
     return None
 
 

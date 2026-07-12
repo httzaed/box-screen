@@ -1,9 +1,9 @@
 """
-lyrics_source.py — Paroles en temps réel via lrclib.net
+lyrics_source.py - Paroles en temps réel via lrclib.net
   • Détecte la chanson via Windows Media Session (même méthode que bpm_source)
   • Fetch les paroles synchronisées (LRC) depuis lrclib.net (gratuit, sans clé)
   • Lit la position de lecture via WinRT pour suivre la ligne courante
-  • Expose get_state() → artist, title, lines, current_idx
+  • Expose get_state() -> artist, title, lines, current_idx
 
 Expose :
   start() / stop()
@@ -185,7 +185,7 @@ def _update_calibration_stats(samples: list):
     try:
         mean = _stats.mean(offsets)
         std = _stats.stdev(offsets) if len(offsets) > 1 else 0.0
-    except:
+    except Exception:
         mean = sum(offsets) / len(offsets)
         std = 0.0
 
@@ -334,16 +334,29 @@ def _remove_topic_noise(text: str) -> str:
     """Retire ' - Topic - ' et autres bruits YouTube des noms."""
     if not text:
         return text
+    import re as _re
     # Retire " - Topic - " (avec espaces autour)
     text = text.replace(" - Topic - ", " - ")
     # Retire aussi " - Topic" ou "Topic -" (en fin de chaîne)
     text = text.replace(" - Topic", "").replace("Topic - ", "")
+    # Retire les parenthèses avec pseudos (playlist channels)
+    text = _re.sub(r'\s*\([^)]*mimi[^)]*\)', '', text, flags=_re.IGNORECASE).strip()
+    text = _re.sub(r'\s*\([^)]*dj[^)]*\)', '', text, flags=_re.IGNORECASE).strip()
     # Nettoie les espaces doubles
     return " ".join(text.split())
 
 def _clean_artist(artist: str) -> str:
     """Retire les suffixes parasites type '- Topic', '- VEVO', '| Vevo', etc."""
     a = " ".join(artist.split())
+
+    # ── Nettoyage des noms de chaînes YouTube (playlists, remixers, etc.) ─────────────
+    # Retire les parenthèses avec pseudos/infos: "hedjient (mimijil)" -> "hedjient"
+    a = re.sub(r'\s*\([^)]*mimijil[^)]*\)', '', a, flags=re.IGNORECASE).strip()
+    a = re.sub(r'\s*\([^)]*\)', '', a).strip()  # Toutes les parenthèses
+
+    # Retire les marques de playlist/channel: "| Channel", " - Channel", etc.
+    a = re.sub(r'\s*\|\s*[\w\s]+$', '', a).strip()
+    a = re.sub(r'\s*[-–]\s*Channel\s*$', '', a, flags=re.IGNORECASE).strip()
 
     # ── Exceptions spéciales ───────────────────────────────────────────────────────────
     # Tyler, The Creator : corrige les fausses détections YouTube/SMTC
@@ -352,7 +365,7 @@ def _clean_artist(artist: str) -> str:
     elif "the creator" in a.lower() and "boot syins" in a.lower():
         a = "Tyler, The Creator"  # Cas: "After The Storm , The Creator, Bootsy Collins ft. tyler"
 
-    # Cas particulier: "georgemichaelVEVO" → "georgemichael" → "George Michael"
+    # Cas particulier: "georgemichaelVEVO" -> "georgemichael" -> "George Michael"
     # Détecte camelCase AVANT de retirer les suffixes
     if len(a) > 4 and not ' ' in a:
         has_mid_upper = any(c.isupper() for c in a[1:-1])
@@ -386,14 +399,14 @@ def _normalize_featuring(title: str) -> str:
     """
     Corrige les featuring mal formés dans le titre.
     Exemples :
-      - "Multiply  J ft.  juicy" → "Multiply ft. Juicy J"
-      - "Song Name X ft. Y" → "Song Name ft. X Y" (réparation inversion)
+      - "Multiply  J ft.  juicy" -> "Multiply ft. Juicy J"
+      - "Song Name X ft. Y" -> "Song Name ft. X Y" (réparation inversion)
     """
     import re as _re
     t = " ".join(title.split())  # normalise espaces
 
     # Pattern spécifique: "Nom Initiale ft. Suffixe" où l'initiale devrait être après ft.
-    # Ex: "Multiply J ft. juicy" → "Multiply ft. Juicy J"
+    # Ex: "Multiply J ft. juicy" -> "Multiply ft. Juicy J"
     # Le pattern: (mot) (initiale/court) ft. (suffixe)
     ft_match = _re.search(r'(\S+)\s+(\S{1,3})\s+ft\s*\.\s*(\S+)', t, _re.IGNORECASE)
     if ft_match:
@@ -407,7 +420,7 @@ def _normalize_featuring(title: str) -> str:
             print(f"[LYRICS] featuring réparé: '{title}' -> '{t}'")
             return t
 
-    # Normaliser le format "ft." → " ft. "
+    # Normaliser le format "ft." -> " ft. "
     t = _re.sub(r'\s*[Ff][Tt]\.\s*', ' ft. ', t)
     t = _re.sub(r'\s*[Ff][Ee][Aa][Tt]\.\s*', ' feat. ', t)
     t = _re.sub(r'\s+[Ff][Ee][Aa][Tt][Uu][Rr][Ii][Nn][Gg]\s+', ' featuring ', t, flags=_re.IGNORECASE)
@@ -419,15 +432,24 @@ def _clean_title(title: str) -> list[str]:
     """
     Retourne plusieurs variantes du titre à essayer :
     - tel quel (espaces normalisés)
-    - sans l'année finale (ex: "Song Name 1980" → "Song Name")
-    - sans les tags entre parenthèses/crochets (ex: "Song (Remaster)" → "Song")
-    - sans les suffixes YouTube (ex: "Song | Vevo" → "Song")
+    - sans l'année finale (ex: "Song Name 1980" -> "Song Name")
+    - sans les tags entre parenthèses/crochets (ex: "Song (Remaster)" -> "Song")
+    - sans les suffixes YouTube (ex: "Song | Vevo" -> "Song")
+    - sans les suffixes de versions alternatives (slowed + reverb, etc.)
     """
     import re as _re
     candidates = []
 
     # D'abord, normaliser les featuring mal formés
     t = _normalize_featuring(title)
+
+    # Normaliser les titres alternatifs (slowed + reverb, extended, etc.)
+    try:
+        import lyrics_special_cases as _lsc
+        t = _lsc.normalize_alternative_title(t)
+    except ImportError:
+        pass
+
     candidates.append(t)
 
     # Supprimer l'année en fin (4 chiffres)
@@ -476,11 +498,15 @@ def _load_cache() -> dict:
 
 
 def _save_cache(cache: dict):
-    """Sauvegarde le cache vers le fichier JSON."""
-    import json as _json, pathlib
+    """Sauvegarde le cache vers le fichier JSON (écriture atomique via .tmp)."""
+    import json as _json, pathlib, os as _os
     path = pathlib.Path(__file__).parent / _CACHE_FILE
+    tmp_path = pathlib.Path(__file__).parent / (_CACHE_FILE + ".tmp")
     try:
-        path.write_text(_json.dumps(cache, ensure_ascii=False, indent=2), encoding='utf-8')
+        # Écriture dans un fichier temporaire
+        tmp_path.write_text(_json.dumps(cache, ensure_ascii=False), encoding='utf-8')
+        # Remplacement atomique (fonctionne sur POSIX et Windows)
+        _os.replace(tmp_path, path)
         # Plus de log ici pour éviter la pollution (la sauvegarde est transparente)
     except Exception as e:
         print(f"[LYRICS] erreur sauvegarde cache: {e}")
@@ -504,11 +530,11 @@ def _detect_version_suffix(title: str) -> str:
     Retourne le suffixe normalisé ou une chaîne vide pour la version studio standard.
 
     Exemples:
-    - "Song Name (Live)" → "live"
-    - "Song Name - Live Version" → "live"
-    - "Song Name [Remix]" → "remix"
-    - "Song Name (Studio Version)" → "studio"
-    - "Song Name" → "" (version standard)
+    - "Song Name (Live)" -> "live"
+    - "Song Name - Live Version" -> "live"
+    - "Song Name [Remix]" -> "remix"
+    - "Song Name (Studio Version)" -> "studio"
+    - "Song Name" -> "" (version standard)
     """
     if not title:
         return ""
@@ -622,8 +648,22 @@ def _flush_cache_if_dirty():
     """Sauvegarde le cache si modifié."""
     global _cache_dirty
     if _cache_dirty:
+        # Créer un backup avant sauvegarde (protection contre perte de données)
+        _backup_cache()
         _save_cache(_get_disk_cache())
         _cache_dirty = False
+
+
+def _backup_cache():
+    """Crée un backup du cache actuel."""
+    try:
+        import shutil
+        cache_file = pathlib.Path(__file__).parent / _CACHE_FILE
+        if cache_file.exists():
+            backup_file = cache_file.with_suffix('.json.bak')
+            shutil.copy2(cache_file, backup_file)
+    except Exception as e:
+        pass  # Silent fail - ne pas bloquer si backup échoue
 
 
 def set_song_offset(artist: str, title: str, offset: float):
@@ -634,7 +674,7 @@ def set_song_offset(artist: str, title: str, offset: float):
         cache[key]["offset"] = offset
         _mark_cache_dirty()
         _flush_cache_if_dirty()
-        print(f"[LYRICS] offset ajusté: {artist} - {title} → {offset}s")
+        print(f"[LYRICS] offset ajusté: {artist} - {title} -> {offset}s")
     else:
         print(f"[LYRICS] impossible d'ajuster offset: chanson pas dans le cache")
 
@@ -655,7 +695,16 @@ def _get_cached(artist: str, title: str) -> dict | None:
 
 def _set_cached(artist: str, title: str, result: dict | None):
     if result:
-        _set_cached_lyrics(artist, title, result.get("synced", []), result.get("plain", ""))
+        # PRÉSERVER L'OFFSET si présent dans le résultat
+        offset = result.get("offset", 0.5)
+        # Si le résultat contient un offset, le garder
+        # Sinon, essayer de charger l'offset existant du cache
+        if offset == 0.5:  # Valeur par défaut
+            cache = _get_disk_cache()
+            key = _cache_key(artist, title)
+            if key in cache and "offset" in cache[key]:
+                offset = cache[key]["offset"]
+        _set_cached_lyrics(artist, title, result.get("synced", []), result.get("plain", ""), offset)
 
 # ── Fetch lyrics ──────────────────────────────────────────────────────────────
 
@@ -663,9 +712,9 @@ def _lrclib_get(artist: str, title: str, timeout: float = 12.0):  # Timeout augm
     """lrclib.net API (gratuit, sync+plain).
 
     Stratégie pour MAXIMISER les paroles synchronisées :
-      1) /api/get  → correspondance exacte artiste/titre (renvoie le LRC sync
+      1) /api/get  -> correspondance exacte artiste/titre (renvoie le LRC sync
          le plus fiable quand il existe).
-      2) /api/search → en secours, mais on ne prend PAS bêtement le premier
+      2) /api/search -> en secours, mais on ne prend PAS bêtement le premier
          résultat : on privilégie une version qui a réellement `syncedLyrics`,
          puis à défaut une version plain.
     """
@@ -688,7 +737,7 @@ def _lrclib_get(artist: str, title: str, timeout: float = 12.0):  # Timeout augm
             if _has_synced(entry):
                 print("[LYRICS]   lrclib /get: version synchronisée trouvée")
                 return entry
-            # /get a répondu mais sans sync → on garde en réserve, on tente search
+            # /get a répondu mais sans sync -> on garde en réserve, on tente search
             if entry and entry.get("plainLyrics"):
                 plain_fallback = entry
     except urllib.error.HTTPError as e:
@@ -709,7 +758,7 @@ def _lrclib_get(artist: str, title: str, timeout: float = 12.0):  # Timeout augm
                 if synced:
                     print(f"[LYRICS]   lrclib /search: sync trouvé parmi {len(results)} résultats")
                     return synced
-                # aucune version synchronisée → premier plain dispo
+                # aucune version synchronisée -> premier plain dispo
                 plain = next((x for x in results if x.get("plainLyrics")), results[0])
                 return plain
     except Exception as e:
@@ -719,7 +768,7 @@ def _lrclib_get(artist: str, title: str, timeout: float = 12.0):  # Timeout augm
     return plain_fallback
 
 
-def _lyrics_ovh_get(artist: str, title: str, timeout: float = 1.5):  # 2s → 1.5s
+def _lyrics_ovh_get(artist: str, title: str, timeout: float = 1.5):  # 2s -> 1.5s
     """lyrics.ovh API (gratuit, plain only)."""
     import urllib.request, json as _json
     try:
@@ -865,9 +914,9 @@ def _set_quota_blocked():
     try:
         from datetime import datetime
         when = datetime.fromtimestamp(_quota_blocked_until).strftime("%H:%M")
-        print(f"[LYRICS]   ⏸ quota YouTube épuisé — OAuth désactivé jusqu'au reset (~{when})")
+        print(f"[LYRICS]   ⏸ quota YouTube épuisé - OAuth désactivé jusqu'au reset (~{when})")
     except Exception:
-        print("[LYRICS]   ⏸ quota YouTube épuisé — OAuth désactivé jusqu'au reset")
+        print("[LYRICS]   ⏸ quota YouTube épuisé - OAuth désactivé jusqu'au reset")
 
 
 def _get_youtube_credentials():
@@ -1155,19 +1204,19 @@ def _fetch_captions_transcript_api(video_id: str) -> dict | None:
                 sess = requests.Session()
                 sess.cookies = jar
                 api = YouTubeTranscriptApi(http_client=sess)
-                print(f"[LYRICS]   transcript-api: ✅ cookies file = {cookies_file}")
+                print(f"[LYRICS]   transcript-api: [OK] cookies file = {cookies_file}")
             except TypeError:
                 # Ancienne signature: pas de http_client -> fallback cookie_path
                 try:
                     api = YouTubeTranscriptApi(cookie_path=cookies_file)
-                    print(f"[LYRICS]   transcript-api: ✅ cookie_path = {cookies_file}")
+                    print(f"[LYRICS]   transcript-api: [OK] cookie_path = {cookies_file}")
                 except Exception:
                     api = None
             except Exception as ce:
                 print(f"[LYRICS]   transcript-api cookies error: {str(ce)[:60]}")
                 api = None
         if api is None:
-            print(f"[LYRICS]   transcript-api: ⚠️  sans cookies (IP risk)")
+            print(f"[LYRICS]   transcript-api: [WARN]  sans cookies (IP risk)")
             api = YouTubeTranscriptApi()
 
         transcripts = None
@@ -1281,12 +1330,12 @@ def _fetch_captions_ytdlp(video_id: str) -> dict | None:
             cookies_browser = os.environ.get("YTDLP_COOKIES_BROWSER", "chrome")
             if cookies_file and os.path.exists(cookies_file):
                 cmd[-1:-1] = ["--cookies", cookies_file]
-                print(f"[LYRICS]   yt-dlp: ✅ cookies file = {cookies_file}")
+                print(f"[LYRICS]   yt-dlp: [OK] cookies file = {cookies_file}")
             elif cookies_browser and cookies_browser.lower() != "none":
                 cmd[-1:-1] = ["--cookies-from-browser", cookies_browser]
                 print(f"[LYRICS]   yt-dlp: cookies-from-browser = {cookies_browser}")
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=20  # 60s → 20s (plus rapide)
+                cmd, capture_output=True, text=True, timeout=20  # 60s -> 20s (plus rapide)
             )
             if proc.returncode != 0:
                 err = (proc.stderr or "").strip()[:120]
@@ -1366,7 +1415,7 @@ def _result_to_lyrics(data: dict) -> dict | None:
             bpm = _bs.get_bpm()
             if bpm and bpm > 0:
                 synced_with_bpm = _create_estimated_sync([l for _, l in plain_lines], bpm)
-                print(f"[LYRICS] 🎵 plain lyrics + BPM {bpm:.0f} → sync estimé")
+                print(f"[LYRICS] 🎵 plain lyrics + BPM {bpm:.0f} -> sync estimé")
                 return {"synced": synced_with_bpm, "plain": plain}
         except Exception:
             pass
@@ -1577,9 +1626,9 @@ def score_lyrics_candidate(
     if has_sync:
         details["sync_bonus"] = 30  # Gros bonus pour sync
         total += 30
-        details["reason"].append(f"✓ sync ({len(synced)} lignes)")
+        details["reason"].append(f"[V] sync ({len(synced)} lignes)")
     else:
-        details["reason"].append("✗ plain only")
+        details["reason"].append("[X] plain only")
 
     # ── 2. MATCH MÉTADONNÉES ────────────────────────────────────────────────
     # lrclib renvoie trackName/artistName/duration
@@ -1601,7 +1650,7 @@ def score_lyrics_candidate(
     total += metadata_score
 
     if artist_match > 0.8 and title_match > 0.8:
-        details["reason"].append(f"✓ métadonnées match (artist:{artist_match:.0%}, title:{title_match:.0%})")
+        details["reason"].append(f"[V] métadonnées match (artist:{artist_match:.0%}, title:{title_match:.0%})")
     elif artist_match > 0.5 or title_match > 0.5:
         details["reason"].append(f"~ match partiel (artist:{artist_match:.0%}, title:{title_match:.0%})")
 
@@ -1612,7 +1661,7 @@ def score_lyrics_candidate(
             penalty = min(20, int(duration_diff / 5))  # -4 points par 5s de diff
             details["metadata_penalty"] = -penalty
             total -= penalty
-            details["reason"].append(f"✗ durée écart {duration_diff:.0f}s (pénalité -{penalty})")
+            details["reason"].append(f"[X] durée écart {duration_diff:.0f}s (pénalité -{penalty})")
 
     # ── 3. COHÉRENCE TEMPORELLE ────────────────────────────────────────────
     if has_sync:
@@ -1620,10 +1669,10 @@ def score_lyrics_candidate(
         if is_coherent:
             details["temporal_score"] = 10
             total += 10
-            details["reason"].append("✓ timestamps cohérents")
+            details["reason"].append("[V] timestamps cohérents")
         else:
             details["temporal_score"] = 0
-            details["reason"].append(f"✗ {reason}")
+            details["reason"].append(f"[X] {reason}")
 
     # ── 4. QUALITÉ TEXTE ────────────────────────────────────────────────────
     text_quality_score = 0
@@ -1636,13 +1685,13 @@ def score_lyrics_candidate(
         is_auto, lang = _detect_caption_auto_generated(synced)
         if is_auto:
             text_quality_score = 0
-            details["reason"].append("✗ captions auto-générés (pauvres)")
+            details["reason"].append("[X] captions auto-générés (pauvres)")
         else:
             text_quality_score = 15
-            details["reason"].append("✓ captions uploadées (bonne qualité)")
+            details["reason"].append("[V] captions uploadées (bonne qualité)")
     elif has_sync:
         text_quality_score = 10
-        details["reason"].append("✓ sync LRC (bonne qualité)")
+        details["reason"].append("[V] sync LRC (bonne qualité)")
 
     details["text_quality"] = text_quality_score
     total += text_quality_score
@@ -1702,6 +1751,34 @@ def _fetch_lyrics(artist: str, title: str) -> dict | None:
     search_key = f"{artist.lower()}|{title.lower()}"
     _current_search_key = search_key
 
+    # ── Cas particuliers : détection automatique ────────────────────────────────
+    try:
+        import lyrics_special_cases as _lsc
+        case_analysis = _lsc.analyze_track(artist, title)
+
+        # Skip instrumental/DJ mix
+        if case_analysis.get("should_skip"):
+            reason = case_analysis.get("skip_reason", "")
+            print(f"[LYRICS] [SKIP]  Skip: {reason}")
+            _set_cached(artist, title, None)  # Cache l'échec
+            return None
+
+        # Japonais : message informatif
+        if case_analysis.get("is_japanese"):
+            print(f"[LYRICS] [JP] Contenu japonais détecté - utilisation APIs standards")
+
+        # Mashup auto-détecté : essayer de chercher les sources séparément
+        if case_analysis.get("is_mashup"):
+            sources = case_analysis.get("mashup_sources", [])
+            if sources:
+                print(f"[LYRICS] 🔀 Mashup détecté - {len(sources)} source(s) à chercher")
+                # Pour l'instant, on normalise le titre pour chercher le morceau principal
+                # TODO: implémenter la fusion de plusieurs sources de lyrics
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"[LYRICS] Erreur analyse cas particuliers: {e}")
+
     # ── Check mashup config (priorité pour les mashups manuels) ─────────────────
     try:
         import mashup_config
@@ -1709,7 +1786,7 @@ def _fetch_lyrics(artist: str, title: str) -> dict | None:
         if mashup_result:
             synced, plain, offset = mashup_result
             if synced or plain:
-                print(f"[LYRICS] ✅ mashup trouvé: {artist} - {title}")
+                print(f"[LYRICS] [OK] mashup trouvé: {artist} - {title}")
                 _set_cached(artist, title, {
                     "synced": synced or [],
                     "plain": plain,
@@ -1737,7 +1814,7 @@ def _fetch_lyrics(artist: str, title: str) -> dict | None:
     import re as _re
     clean_title = title
 
-    # PRIORITÉ: réparer les featuring mal formés (ex: "J ft. juicy" → "ft. Juicy J")
+    # PRIORITÉ: réparer les featuring mal formés (ex: "J ft. juicy" -> "ft. Juicy J")
     clean_title = _normalize_featuring(clean_title)
 
     # Retire [Official Video] [HD] (crochets)
@@ -1806,7 +1883,7 @@ def _fetch_lyrics(artist: str, title: str) -> dict | None:
 
     # Cache l'échec
     _set_cached(artist, title, None)
-    print(f"[LYRICS] ✗ pas trouvé (essayé {len(searches)} variantes)")
+    print(f"[LYRICS] [X] pas trouvé (essayé {len(searches)} variantes)")
     return None
 
 
@@ -1836,13 +1913,18 @@ def _load_offset(artist: str, title: str) -> tuple[float | None, bool]:
 
     Si la chanson a déjà un offset calibré (différent de la valeur par défaut),
     on l'applique immédiatement et on considère la calibration terminée.
-    Sinon (None, False) → l'auto-calibration démarrera.
+    Sinon (None, False) -> l'auto-calibration démarrera.
     """
     cached = get_song_offset(artist, title)
     # 0.5 est la valeur par défaut posée à la création de l'entrée cache :
     # on ne la traite pas comme une vraie calibration.
     if cached is not None and abs(cached - 0.5) > 1e-6:
-        print(f"[LYRICS] 🎯 offset chargé du cache : {cached:+.2f}s")
+        # Validation : rejette les offsets absurdes (> 60s ou < -60s)
+        if abs(cached) > 60:
+            print(f"[LYRICS] [WARN] Offset absurde ignoré : {cached:+.2f}s (reset à 0)")
+            set_song_offset(artist, title, 0.0)
+            return None, False
+        print(f"[LYRICS] [TARGET] offset chargé du cache : {cached:+.2f}s")
         return cached, True
     return None, False
 
@@ -1868,9 +1950,58 @@ def _create_estimated_sync(lines: list, bpm: float | None) -> list:
     return synced_lines
 
 
-def _load_lyrics_for(artist: str, title: str, video_id: str | None) -> dict | None:
+def _load_lyrics_fast(artist: str, title: str, video_id: str | None) -> dict | None:
+    """
+    FAST MODE : Affiche des lyrics rapidement.
+    1) Vérifie le cache d'abord
+    2) Sinon, lrclib avec timeout court
+    Retourne immédiatement un candidat utilisable ou None.
+    """
+    import re as _re
+
+    # 1) Cache d'abord - instantané !
+    key = _cache_key(artist, title)
+    cache = _get_disk_cache()
+    if key in cache:
+        cached = cache[key]
+        cached_lyrics = cached.get("lyrics")
+        if cached_lyrics:
+            print(f"[LYRICS] FAST Cache hit: {len(cached_lyrics)} lignes")
+            return {
+                "synced": cached_lyrics,
+                "plain": cached.get("plain", ""),
+                "source": "cache"
+            }
+
+    # 2) Sinon, lrclib avec timeout court
+    clean_title = title
+    clean_title = _normalize_featuring(clean_title)
+    clean_title = _re.sub(r'\s*[\(\[][^\)\]]*[\)\]]\s*$', '', clean_title).strip()
+    clean_title = _re.sub(r'\s*[-–]\s*(Official|Video|HD|Remastered|Remaster|Explicit|Lyrics)\b.*$', '', clean_title, flags=_re.IGNORECASE).strip()
+
+    print(f"[LYRICS] FAST Cache miss - recherche lrclib (3s)")
+
+    try:
+        data = _lrclib_get(artist, clean_title, timeout=3.0)
+        if data:
+            result = _result_to_lyrics(data)
+            if result and result.get("synced"):
+                print(f"[LYRICS] FAST lrclib trouvé: {len(result['synced'])} lignes sync")
+                result["source"] = "lrclib_fast"
+                return result
+    except Exception as e:
+        print(f"[LYRICS] FAST lrclib error: {e}")
+
+    return None
+
+
+def _load_lyrics_for(artist: str, title: str, video_id: str | None, fast_first: bool = False) -> dict | None:
     """
     Charge les paroles en utilisant un SYSTÈME DE SCORING DE QUALITÉ.
+
+    Modes:
+      - fast_first=False (défaut): Fetch complet avec scoring
+      - fast_first=True: Essaie lrclib rapide d'abord, puis continue en arrière-plan
 
     Pour une chanson donnée:
       1) Fetch les candidats disponibles (lrclib + YouTube captions)
@@ -1887,6 +2018,51 @@ def _load_lyrics_for(artist: str, title: str, video_id: str | None) -> dict | No
     candidates = []
     media_duration = None  # Pourrait être enrichi via WinRT plus tard
 
+    # Fast mode : retourne immédiatement si lrclib trouve
+    if fast_first:
+        fast_result = _load_lyrics_fast(artist, title, video_id)
+        if fast_result:
+            # Continue en arrière-plan pour trouver un meilleur candidat
+            def _background_refine():
+                try:
+                    full_result = _load_lyrics_for(artist, title, video_id, fast_first=False)
+                    if full_result:
+                        # Comparer les scores
+                        fast_score, _ = score_lyrics_candidate(fast_result, artist, title, media_duration, video_id)
+                        full_score, _ = score_lyrics_candidate(full_result, artist, title, media_duration, video_id)
+                        if full_score > fast_score * 1.2:  # 20% mieux
+                            print(f"[LYRICS] [REFRESH] Upgrade: {fast_result['source']} -> {full_result['source']} (score {fast_score:.0f} -> {full_score:.0f})")
+                            # Met à jour le cache
+                            _set_cached(artist, title, full_result)
+                            _flush_cache_if_dirty()
+                except Exception as e:
+                    print(f"[LYRICS] Background refine error: {e}")
+
+            # Lance en arrière-plan sans bloquer
+            import threading
+            threading.Thread(target=_background_refine, daemon=True, name="lyrics_refine").start()
+
+            return fast_result
+
+    # ── Cas particuliers : détection automatique ────────────────────────────────
+    try:
+        import lyrics_special_cases as _lsc
+        case_analysis = _lsc.analyze_track(artist, title)
+
+        # Skip instrumental/DJ mix
+        if case_analysis.get("should_skip"):
+            reason = case_analysis.get("skip_reason", "")
+            print(f"[LYRICS] [SKIP]  Skip: {reason}")
+            return None
+
+        # Japonais : message informatif
+        if case_analysis.get("is_japanese"):
+            print(f"[LYRICS] [JP] Contenu japonais détecté - utilisation APIs standards")
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"[LYRICS] Erreur analyse cas particuliers: {e}")
+
     # Nettoie le titre pour les recherches
     import re as _re
     clean_title = title
@@ -1896,7 +2072,14 @@ def _load_lyrics_for(artist: str, title: str, video_id: str | None) -> dict | No
     clean_title = _re.sub(r'\s*[-–]\s*\d{4}\s*$', '', clean_title).strip()
     clean_title = _re.sub(r'\s*[\(\[][^()\]]*?(Official|Video|HD|Remaster|Version|Lyrics|Audio)[^)\]]*?[\)\]]', '', clean_title, flags=_re.IGNORECASE).strip()
 
-    print(f"[LYRICS] 🔍 Recherche multi-sources: {artist!r} / {clean_title!r}")
+    # Normaliser les titres alternatifs (slowed + reverb, extended, etc.)
+    try:
+        import lyrics_special_cases as _lsc
+        clean_title = _lsc.normalize_alternative_title(clean_title)
+    except ImportError:
+        pass
+
+    print(f"[LYRICS] [SEARCH] Recherche multi-sources: {artist!r} / {clean_title!r}")
 
     # ── Fetch parallèle des candidats ───────────────────────────────────────────
     def _fetch_lrclib_candidate():
@@ -1933,21 +2116,43 @@ def _load_lyrics_for(artist: str, title: str, video_id: str | None) -> dict | No
             executor.submit(_fetch_youtube_candidate): "youtube",
         }
 
-        for future in as_completed(futures, timeout=20):
-            source_name = futures[future]
-            try:
-                result = future.result()
-                if result:
-                    candidates.append(result)
-                    print(f"[LYRICS]   ✓ {source_name}: {len(result.get('synced', []))} lignes sync")
-            except Exception as e:
-                print(f"[LYRICS]   ✗ {source_name} exception: {e}")
+        try:
+            for future in as_completed(futures, timeout=20):
+                source_name = futures[future]
+                try:
+                    result = future.result()
+                    if result:
+                        candidates.append(result)
+                        print(f"[LYRICS]   [V] {source_name}: {len(result.get('synced', []))} lignes sync")
+                except Exception as e:
+                    print(f"[LYRICS]   [X] {source_name} exception: {e}")
+        except TimeoutError:
+            # Timeout: on attend encore un peu pour les futures qui sont sur le point de finir
+            pending = sum(1 for f in futures if not f.done())
+            if pending:
+                print(f"[LYRICS]   [TIME] Timeout après 20s, {pending} source(s) encore en cours - attente supplémentaire...")
+
+            # Attend jusqu'à 5s de plus pour récupérer les résultats qui arrivent
+            from concurrent.futures import wait
+            finished, not_finished = wait(futures, timeout=5)
+
+            for future in finished:
+                source_name = futures[future]
+                try:
+                    result = future.result()
+                    if result:
+                        candidates.append(result)
+                        print(f"[LYRICS]   [V] {source_name}: {len(result.get('synced', []))} lignes sync (après timeout)")
+                except Exception as e:
+                    print(f"[LYRICS]   [X] {source_name} exception (après timeout): {e}")
+        except Exception as e:
+            print(f"[LYRICS]   [WARN] Erreur inattendue pendant le fetch: {e}")
 
     # ── Scoring des candidats ───────────────────────────────────────────────────
     if not candidates:
-        print(f"[LYRICS] ✗ Aucun candidat trouvé")
+        print(f"[LYRICS] [X] Aucun candidat trouvé")
         # Fallback Genius (plain-only)
-        print(f"[LYRICS]   → Fallback Genius (plain-only)...")
+        print(f"[LYRICS]   -> Fallback Genius (plain-only)...")
         try:
             data = _genius_fetch(artist, clean_title)
             if data:
@@ -1970,7 +2175,7 @@ def _load_lyrics_for(artist: str, title: str, video_id: str | None) -> dict | No
         scored_candidates.append((score, details, cand))
         source = cand.get("source", f"candidate_{i}")
         reasons = "; ".join(details["reason"])
-        print(f"[LYRICS]   📊 {source}: score={score:.0f} [{reasons}]")
+        print(f"[LYRICS]   [STATS] {source}: score={score:.0f} [{reasons}]")
 
     # Cross-validation si plusieurs candidats sync
     if len(scored_candidates) >= 2:
@@ -1978,13 +2183,13 @@ def _load_lyrics_for(artist: str, title: str, video_id: str | None) -> dict | No
         if len(synced_candidates) >= 2:
             comparisons = _compare_candidates_cross(synced_candidates, artist, title)
             if comparisons:
-                print(f"[LYRICS]   🔗 Cross-validation: {len(comparisons)} paires similaires")
+                print(f"[LYRICS]   [LINK] Cross-validation: {len(comparisons)} paires similaires")
 
     # Choix du meilleur
     best_score, best_details, best_candidate = max(scored_candidates, key=lambda x: x[0])
     best_source = best_candidate.get("source", "unknown")
 
-    print(f"[LYRICS] ✅ Meilleur candidat: {best_source} (score={best_score:.0f})")
+    print(f"[LYRICS] [OK] Meilleur candidat: {best_source} (score={best_score:.0f})")
 
     # Sauvegarde dans le cache avec métadonnées
     existing = _get_disk_cache().get(_cache_key(artist, title), {})
@@ -2090,7 +2295,7 @@ def _run():
 
         # ── Fallback SMTC ─────────────────────────────────────────────────────
         if smtc_pos is not None and smtc_pos > 1.0 and smtc_pos_t is not None:
-            # SMTC donne une vraie position → l'interpoler
+            # SMTC donne une vraie position -> l'interpoler
             elapsed = time.monotonic() - smtc_pos_t
             return smtc_pos + elapsed
 
@@ -2118,151 +2323,64 @@ def _run():
         return raw - offset
 
     while _running:
-        now = time.monotonic()
+        try:
+            now = time.monotonic()
+    
+            if now - last_fetch_t >= FETCH_INTERVAL:
+                last_fetch_t = now
+    
+                # ── YouTube extension (priorité absolue) ────────────────────────────────
+                if _youtube_artist and _youtube_title:
+                    global _youtube_captions_tried  # Déclarer global ici pour toute la section
+    
+                    # Clé UNIQUE basée sur video_id pour détecter tout changement de vidéo
+                    # (video_id change TOUJOURS la clé, même si artiste/titre identiques)
+                    yt_key = f"yt:{_youtube_video_id or '?'}|{_youtube_artist.lower()}|{_youtube_title.lower()}"
+                    # Re-fetch si nouvelle vidéo (video_id changé) OU si on a pas encore essayé les captions
+                    need_refetch = (yt_key != last_key) or (
+                        _youtube_video_id and not _youtube_captions_tried and not _has_sync(lyrics)
+                    )
 
-        if now - last_fetch_t >= FETCH_INTERVAL:
-            last_fetch_t = now
+                    # Détecte si le nom de la chaîne est suspect (playlist/remixer)
+                    # Patterns: (mimijil), (DJ X), etc.
+                    import re as _re
+                    suspicious_patterns = [
+                        r'\([^)]*mimi[^)]*\)',
+                        r'\([^)]*dj\s*\w*[^)]*\)',
+                        r'\([^)]*mix[^)]*\)',
+                        r'\([^)]*edit[^)]*\)',
+                    ]
+                    is_suspicious_channel = any(_re.search(p, _youtube_artist, _re.IGNORECASE) for p in suspicious_patterns)
 
-            # ── YouTube extension (priorité absolue) ────────────────────────────────
-            if _youtube_artist and _youtube_title:
-                global _youtube_captions_tried  # Déclarer global ici pour toute la section
+                    # SAUF si le nom de chaîne est suspect ET qu'on a déjà des lyrics SMTC
+                    if is_suspicious_channel and lyrics and _has_sync(lyrics):
+                        # On a déjà des bons lyrics via SMTC -> ignorer YouTube
+                        need_refetch = False
+                        if int(now) % 30 == 0:  # Log toutes les 30s pour éviter spam
+                            print(f"[LYRICS] [SKIP]  Skip YouTube (chaîne suspecte: {_youtube_artist}) - utilise SMTC")
 
-                # Clé UNIQUE basée sur video_id pour détecter tout changement de vidéo
-                # (video_id change TOUJOURS la clé, même si artiste/titre identiques)
-                yt_key = f"yt:{_youtube_video_id or '?'}|{_youtube_artist.lower()}|{_youtube_title.lower()}"
-                # Re-fetch si nouvelle vidéo (video_id changé) OU si on a pas encore essayé les captions
-                need_refetch = (yt_key != last_key) or (
-                    _youtube_video_id and not _youtube_captions_tried and not _has_sync(lyrics)
-                )
-                if need_refetch:
-                    # Annule toute recherche en cours
-                    global _current_search_key
-                    _current_search_key = None  # ← Annule la recherche précédente
-                    _youtube_captions_tried = False  # Reset pour nouvelle vidéo
+                    # Si on a déjà des lyrics pour CETTE chanson (même artiste/titre), pas besoin de refaire
+                    if lyrics and artist.lower() == _remove_topic_noise(_youtube_artist).lower() and title.lower() in _youtube_title.lower():
+                        need_refetch = False
+                        if int(now) % 30 == 0:
+                            print(f"[LYRICS] [SKIP]  Lyrics déjà chargés pour cette chanson")
 
-                    # Nouvelle vidéo YouTube → fetch lyrics
-                    # Nettoie les noms YouTube (retire " - Topic - " etc.)
-                    clean_artist = _remove_topic_noise(_youtube_artist)
-                    print(f"[LYRICS] YouTube: {clean_artist} — {_youtube_title}")
-                    artist, title = _clean_artist(clean_artist), _youtube_title
-                    key = yt_key
-                    last_key = key
-                    fail_count = 0
-                    song_start_t = None  # YouTube gère sa propre position
-
-                    # AFFICHAGE IMMÉDIAT : Recherche en cours...
-                    with _lock:
-                        _state = {
-                            "artist": artist,
-                            "title": title,
-                            "lines": [],
-                            "current_idx": 0,
-                            "position": None,
-                            "has_sync": False,
-                            "loading": True,  # ← État de chargement
-                        }
-
-                    # Première écoute jamais ? (vérifier avant _fetch qui ajoute au cache)
-                    _first_listen_mode = _cache_key(artist, title) not in _get_disk_cache()
-
-                    # Captions YouTube (synchro) en priorité, sinon APIs
-                    lyrics = _load_lyrics_for(artist, title, _youtube_video_id)
-
-                    # Marquer qu'on a essayé les captions pour cette vidéo
-                    _youtube_captions_tried = True
-
-                    if lyrics:
-                        print(f"[LYRICS] {len(lyrics['synced'])} lignes")
-                    else:
-                        print("[LYRICS] introuvable")
-
-                    if _first_listen_mode and lyrics:
-                        print(f"[LYRICS] 🔊 première écoute — calibration active avec Kalman filter")
-
-                    # Reset beat tracking + calibration
-                    _beat_counter = 0
-                    _last_beat_seq = None
-                    _song_start_beats = None
-                    _last_sync_pos = None
-                    _calibration_active = False
-                    _calibration_samples = []
-                    _calibrated_offset, _calibration_done = _load_offset(artist, title)
-                    _next_sample_pos = 5.0  # Premier sample à 5s
-                    _kalman_init()  # Reset Kalman filter
-                # Même vidéo, rien à faire
-            else:
-                # ── Pas de YouTube → essai BPM/SMTC ────────────────────────────────────
-                r_from_bpm = None
-                try:
-                    import bpm_source as _bs
-                    bpm_artist, bpm_title = None, None
-                    if hasattr(_bs, '_get_now_playing'):
-                        result = _bs._get_now_playing()
-                        if result:
-                            bpm_artist, bpm_title = result
-                            # Nettoie le nom : retire " - Topic - " et autres bruits
-                            if bpm_artist and " - Topic - " in bpm_artist:
-                                bpm_artist = bpm_artist.replace(" - Topic - ", " ")
-                    if bpm_artist and bpm_title:
-                        bpm_artist = _remove_topic_noise(bpm_artist)
-                        r_from_bpm = (bpm_artist, bpm_title, None)
-                except Exception:
-                    pass
-
-                r = r_from_bpm or _winrt_fetch()
-
-                if r is None:
-                    fail_count += 1
-                    if fail_count == 1:
-                        print("[LYRICS] aucune session média détectée")
-                    elif fail_count % 5 == 0:
-                        print(f"[LYRICS] toujours rien ({fail_count}/{FAIL_CLEAR})")
-                    if fail_count >= FAIL_CLEAR:
-                        with _lock:
-                            _state = None
-                        last_key = None
-                        lyrics = None
-                        song_start_t = None
-                else:
-                    a, t, p = r
-                    fail_count = 0
-
-                    if p is not None and p > 0:
-                        if smtc_pos is not None and abs(p - smtc_pos) < 0.1:
-                            pos_frozen_count += 1
-                        else:
-                            pos_frozen_count = 0
-                            smtc_pos = p
-                            smtc_pos_t = now
-
-                    if not t:
-                        continue
-                    if " - " in t and not a:
-                        parts = [x.strip() for x in t.split(" - ", 1)]
-                        a, t = parts[0], parts[1]
-                    artist, title = _clean_artist(a), t
-                    key = f"{artist.lower()}|{title.lower()}"
-                    if key != last_key:
-                        last_key = key
-                        lyrics = None
-                        song_start_t = now
-                        smtc_pos = p if (p and p > 0) else None
-                        smtc_pos_t = now if smtc_pos else None
-                        pos_frozen_count = 0
-                        print(f"[LYRICS] ~ {artist} - {title}  [SMTC pos={p}]")
-
-                        # RESET calibration quand la chanson change
-                        _calibration_active = False
-                        _calibration_samples = []
-                        _calibration_done = False
-                        _calibrated_offset = None
-                        _next_sample_pos = 5.0
-                        _first_listen_mode = True
-                        _kalman_init()
-
+                    if need_refetch:
                         # Annule toute recherche en cours
-                        _current_search_key = None  # ← Annule la recherche précédente
-
+                        global _current_search_key
+                        _current_search_key = None  # <- Annule la recherche précédente
+                        _youtube_captions_tried = False  # Reset pour nouvelle vidéo
+    
+                        # Nouvelle vidéo YouTube -> fetch lyrics
+                        # Nettoie les noms YouTube (retire " - Topic - " etc.)
+                        clean_artist = _remove_topic_noise(_youtube_artist)
+                        print(f"[LYRICS] YouTube: {clean_artist} - {_youtube_title}")
+                        artist, title = _clean_artist(clean_artist), _youtube_title
+                        key = yt_key
+                        last_key = key
+                        fail_count = 0
+                        song_start_t = None  # YouTube gère sa propre position
+    
                         # AFFICHAGE IMMÉDIAT : Recherche en cours...
                         with _lock:
                             _state = {
@@ -2272,27 +2390,26 @@ def _run():
                                 "current_idx": 0,
                                 "position": None,
                                 "has_sync": False,
-                                "loading": True,  # ← État de chargement
+                                "loading": True,  # <- État de chargement
                             }
-
-                        # Première écoute jamais ? (vérifier avant _fetch_lyrics qui ajoute au cache)
+    
+                        # Première écoute jamais ? (vérifier avant _fetch qui ajoute au cache)
                         _first_listen_mode = _cache_key(artist, title) not in _get_disk_cache()
-
-                        # Si l'extension YouTube a un video_id pour CETTE chanson, on
-                        # tente d'abord les captions YouTube (synchro) même en SMTC.
-                        vid = None
-                        if (_youtube_video_id and _youtube_title
-                                and _youtube_title.lower() in title.lower()):
-                            vid = _youtube_video_id
-                        lyrics = _load_lyrics_for(artist, title, vid)
+    
+                        # Fast mode: lrclib rapide d'abord, puis smart refinement
+                        lyrics = _load_lyrics_for(artist, title, _youtube_video_id, fast_first=True)
+    
+                        # Marquer qu'on a essayé les captions pour cette vidéo
+                        _youtube_captions_tried = True
+    
                         if lyrics:
                             print(f"[LYRICS] {len(lyrics['synced'])} lignes")
                         else:
                             print("[LYRICS] introuvable")
-
+    
                         if _first_listen_mode and lyrics:
-                            print(f"[LYRICS] 🔊 première écoute — calibration active avec Kalman filter")
-
+                            print(f"[LYRICS] [AUDIO] première écoute - calibration active avec Kalman filter")
+    
                         # Reset beat tracking + calibration
                         _beat_counter = 0
                         _last_beat_seq = None
@@ -2303,122 +2420,250 @@ def _run():
                         _calibrated_offset, _calibration_done = _load_offset(artist, title)
                         _next_sample_pos = 5.0  # Premier sample à 5s
                         _kalman_init()  # Reset Kalman filter
-                    else:
-                        if int(now) % 10 == 0:
-                            eff = _effective_pos()
-                            print(f"[LYRICS pos] SMTC={p}  eff={eff:.1f}s" if eff else f"[LYRICS pos] SMTC={p}  eff=None")
-
-        # ── Beat tracking depuis bpm_source ─────────────────────────────────────
-        try:
-            import bpm_source as _bs
-            beat_ts, beat_seq = _bs.get_beat_event()
-            if beat_seq is not None and beat_seq != _last_beat_seq:
-                # Nouveau beat détecté !
-                _last_beat_seq = beat_seq
-                _beat_counter += 1
-                _last_beat_ts = beat_ts
-
-                # Initialisation : premier beat de la chanson
-                if _song_start_beats is None:
-                    _song_start_beats = beat_seq
-                    _beat_counter = 0
-
-                # ── Auto-calibration offset avec Kalman filter ────────────────────────
-                if (_first_listen_mode and lyrics and lyrics["synced"]
-                        and lyrics["synced"][0][0] is not None):
-                    # On mesure sur la position BRUTE (sans offset déjà appliqué)
-                    raw_pos = _raw_pos()
-                    if raw_pos is not None and raw_pos >= _next_sample_pos:
-                        try:
-                            idx = _current_idx(lyrics["synced"], raw_pos)
-                            # Arrêter la calibration si on est à la fin des lyrics
-                            # (sinon l'offset mesuré drift car current_lyric_ts ne bouge plus)
-                            if idx >= len(lyrics["synced"]) - 2:
-                                _calibration_done = True
-                            current_lyric_ts = lyrics["synced"][idx][0]
-                            if current_lyric_ts is not None:
-                                sample = raw_pos - current_lyric_ts
-                                sample_ts = time.monotonic()
-                                _calibration_samples.append((sample_ts, sample))
-                                _calibration_active = True
-                                _next_sample_pos += _sample_interval
-                                n = len(_calibration_samples)
-
-                                # Mettre à jour le Kalman filter
-                                kalman_est = _kalman_update(sample)
-                                _calibrated_offset = kalman_est
-
-                                # Éliminer les outliers une seule fois (après 10 samples)
-                                # Pas de filtrage cyclique pour éviter l'effet boule de neige
-                                if n == 10 and not _calibration_done:
-                                    filtered = _remove_outliers_iqr(_calibration_samples)
-                                    if len(filtered) < len(_calibration_samples):
-                                        print(f"[LYRICS] 🧹 {len(_calibration_samples) - len(filtered)} outlier(s) éliminé(s) — IQR filtering unique")
-                                        # Reset Kalman avec les données propres
-                                        _kalman_init()
-                                        for ts, off in filtered:
-                                            _kalman_update(off)
-                                        _calibration_samples = filtered
-                                        kalman_est = _kf_state  # Recalculer après reset
-                                        n = len(_calibration_samples)  # Recalculer n après filtrage
-
-                                # Mettre à jour les stats
-                                _update_calibration_stats(_calibration_samples)
-
-                                print(f"[LYRICS] 📐 sample #{n} @{raw_pos:.0f}s → offset {sample:+.2f}s | KF: {kalman_est:+.2f}s | σ: {_calibration_stats['std']:.2f}s | conf: {_calibration_stats['confidence']:.0%}")
-
-                                # Mise à jour du cache à chaque sample (offset dynamique)
-                                cache = _get_disk_cache()
-                                ck = _cache_key(artist, title)
-                                if ck in cache:
-                                    cache[ck]["offset"] = kalman_est
-                                    _mark_cache_dirty()
-                                    _flush_cache_if_dirty()
-
-                                # Arrêt quand confiance > 90% et std < 0.3s
-                                # OU après 50 samples (timeout pour éviter boucle infinie)
-                                if ((_calibration_stats["confidence"] >= 0.9
-                                        and _calibration_stats["std"] is not None
-                                        and _calibration_stats["std"] < 0.3
-                                        and n >= 8)
-                                    or n >= 50):
-                                    if n >= 50:
-                                        print(f"[LYRICS] ⚠️ calibration TEMPOUT (50 samples) — offset final : {_calibrated_offset:+.2f}s (σ={_calibration_stats['std']:.2f}s)")
-                                    else:
-                                        print(f"[LYRICS] ✅ calibration HAUTE PRÉCISION — offset final : {_calibrated_offset:+.2f}s (σ={_calibration_stats['std']:.2f}s, {_calibration_stats['outliers_removed']} outliers)")
-                                    _calibration_done = True
-                        except Exception:
-                            pass
-        except Exception:
-            pass  # bpm_source pas dispo
-
-        # ── Mise à jour state ──────────────────────────────────────────────
-        if last_key is not None:
-            eff_pos = _effective_pos()
-            with _lock:
-                if lyrics and lyrics["synced"]:
-                    idx = _current_idx(lyrics["synced"], eff_pos) \
-                          if eff_pos is not None and lyrics["synced"][0][0] is not None else 0
-                    _state = {
-                        "artist":      artist,
-                        "title":       title,
-                        "lines":       lyrics["synced"],
-                        "current_idx": idx,
-                        "position":    eff_pos,
-                        "has_sync":    lyrics["synced"][0][0] is not None,
-                        "loading":     False,  # ← Chargement terminé
-                    }
+                    # Même vidéo, rien à faire
                 else:
-                    _state = {
-                        "artist": artist, "title": title,
-                        "lines": [], "current_idx": 0, "position": None, "has_sync": False,
-                        "loading": False,  # ← Pas de lyrics trouvées
-                    }
+                    # ── Pas de YouTube -> essai BPM/SMTC ────────────────────────────────────
+                    r_from_bpm = None
+                    try:
+                        import bpm_source as _bs
+                        bpm_artist, bpm_title = None, None
+                        if hasattr(_bs, '_get_now_playing'):
+                            result = _bs._get_now_playing()
+                            if result:
+                                bpm_artist, bpm_title = result
+                                # Nettoie le nom : retire " - Topic - " et autres bruits
+                                if bpm_artist and " - Topic - " in bpm_artist:
+                                    bpm_artist = bpm_artist.replace(" - Topic - ", " ")
+                        if bpm_artist and bpm_title:
+                            bpm_artist = _remove_topic_noise(bpm_artist)
+                            r_from_bpm = (bpm_artist, bpm_title, None)
+                    except Exception:
+                        pass
+    
+                    r = r_from_bpm or _winrt_fetch()
+    
+                    if r is None:
+                        fail_count += 1
+                        if fail_count == 1:
+                            print("[LYRICS] aucune session média détectée")
+                        elif fail_count % 5 == 0:
+                            print(f"[LYRICS] toujours rien ({fail_count}/{FAIL_CLEAR})")
+                        if fail_count >= FAIL_CLEAR:
+                            with _lock:
+                                _state = None
+                            last_key = None
+                            lyrics = None
+                            song_start_t = None
+                    else:
+                        a, t, p = r
+                        fail_count = 0
+    
+                        if p is not None and p > 0:
+                            if smtc_pos is not None and abs(p - smtc_pos) < 0.1:
+                                pos_frozen_count += 1
+                            else:
+                                pos_frozen_count = 0
+                                smtc_pos = p
+                                smtc_pos_t = now
+    
+                        if not t:
+                            continue
+                        if " - " in t and not a:
+                            parts = [x.strip() for x in t.split(" - ", 1)]
+                            a, t = parts[0], parts[1]
+                        artist, title = _clean_artist(a), t
+                        key = f"{artist.lower()}|{title.lower()}"
+                        if key != last_key:
+                            last_key = key
+                            lyrics = None
+                            song_start_t = now
+                            smtc_pos = p if (p and p > 0) else None
+                            smtc_pos_t = now if smtc_pos else None
+                            pos_frozen_count = 0
+                            print(f"[LYRICS] ~ {artist} - {title}  [SMTC pos={p}]")
+    
+                            # RESET calibration quand la chanson change
+                            _calibration_active = False
+                            _calibration_samples = []
+                            _calibration_done = False
+                            _calibrated_offset = None
+                            _next_sample_pos = 5.0
+                            _first_listen_mode = True
+                            _kalman_init()
+    
+                            # Annule toute recherche en cours
+                            _current_search_key = None  # <- Annule la recherche précédente
+    
+                            # AFFICHAGE IMMÉDIAT : Recherche en cours...
+                            with _lock:
+                                _state = {
+                                    "artist": artist,
+                                    "title": title,
+                                    "lines": [],
+                                    "current_idx": 0,
+                                    "position": None,
+                                    "has_sync": False,
+                                    "loading": True,  # <- État de chargement
+                                }
+    
+                            # Première écoute jamais ? (vérifier avant _fetch_lyrics qui ajoute au cache)
+                            _first_listen_mode = _cache_key(artist, title) not in _get_disk_cache()
+    
+                            # Si l'extension YouTube a un video_id pour CETTE chanson, on
+                            # tente d'abord les captions YouTube (synchro) même en SMTC.
+                            vid = None
+                            if (_youtube_video_id and _youtube_title
+                                    and _youtube_title.lower() in title.lower()):
+                                vid = _youtube_video_id
+                            lyrics = _load_lyrics_for(artist, title, vid, fast_first=True)
+                            if lyrics:
+                                print(f"[LYRICS] {len(lyrics['synced'])} lignes")
+                            else:
+                                print("[LYRICS] introuvable")
+    
+                            if _first_listen_mode and lyrics:
+                                print(f"[LYRICS] [AUDIO] première écoute - calibration active avec Kalman filter")
+    
+                            # Reset beat tracking + calibration
+                            _beat_counter = 0
+                            _last_beat_seq = None
+                            _song_start_beats = None
+                            _last_sync_pos = None
+                            _calibration_active = False
+                            _calibration_samples = []
+                            _calibrated_offset, _calibration_done = _load_offset(artist, title)
+                            _next_sample_pos = 5.0  # Premier sample à 5s
+                            _kalman_init()  # Reset Kalman filter
+                        else:
+                            if int(now) % 10 == 0:
+                                eff = _effective_pos()
+                                print(f"[LYRICS pos] SMTC={p}  eff={eff:.1f}s" if eff else f"[LYRICS pos] SMTC={p}  eff=None")
+    
+            # ── Beat tracking depuis bpm_source ─────────────────────────────────────
+            try:
+                import bpm_source as _bs
+                beat_ts, beat_seq = _bs.get_beat_event()
+                if beat_seq is not None and beat_seq != _last_beat_seq:
+                    # Nouveau beat détecté !
+                    _last_beat_seq = beat_seq
+                    _beat_counter += 1
+                    _last_beat_ts = beat_ts
+    
+                    # Initialisation : premier beat de la chanson
+                    if _song_start_beats is None:
+                        _song_start_beats = beat_seq
+                        _beat_counter = 0
+    
+                    # ── Auto-calibration offset avec Kalman filter ────────────────────────
+                    # NE lance l'auto-calibration QUE si: first listen mode ET pas déjà calibré
+                    if (_first_listen_mode and not _calibration_done and lyrics and lyrics["synced"]
+                            and lyrics["synced"][0][0] is not None):
+                        # On mesure sur la position BRUTE (sans offset déjà appliqué)
+                        raw_pos = _raw_pos()
+                        if raw_pos is not None and raw_pos >= _next_sample_pos:
+                            try:
+                                idx = _current_idx(lyrics["synced"], raw_pos)
+                                # Arrêter la calibration si on est à la fin des lyrics
+                                # (sinon l'offset mesuré drift car current_lyric_ts ne bouge plus)
+                                if idx >= len(lyrics["synced"]) - 2:
+                                    _calibration_done = True
+                                current_lyric_ts = lyrics["synced"][idx][0]
+                                if current_lyric_ts is not None:
+                                    sample = raw_pos - current_lyric_ts
+                                    sample_ts = time.monotonic()
+                                    _calibration_samples.append((sample_ts, sample))
+                                    _calibration_active = True
+                                    _next_sample_pos += _sample_interval
+                                    n = len(_calibration_samples)
+    
+                                    # Mettre à jour le Kalman filter
+                                    kalman_est = _kalman_update(sample)
+                                    _calibrated_offset = kalman_est
+    
+                                    # Éliminer les outliers une seule fois (après 10 samples)
+                                    # Pas de filtrage cyclique pour éviter l'effet boule de neige
+                                    if n == 10 and not _calibration_done:
+                                        filtered = _remove_outliers_iqr(_calibration_samples)
+                                        if len(filtered) < len(_calibration_samples):
+                                            print(f"[LYRICS] 🧹 {len(_calibration_samples) - len(filtered)} outlier(s) éliminé(s) - IQR filtering unique")
+                                            # Reset Kalman avec les données propres
+                                            _kalman_init()
+                                            for ts, off in filtered:
+                                                _kalman_update(off)
+                                            _calibration_samples = filtered
+                                            kalman_est = _kf_state  # Recalculer après reset
+                                            n = len(_calibration_samples)  # Recalculer n après filtrage
+    
+                                    # Mettre à jour les stats
+                                    _update_calibration_stats(_calibration_samples)
+    
+                                    print(f"[LYRICS] 📐 sample #{n} @{raw_pos:.0f}s -> offset {sample:+.2f}s | KF: {kalman_est:+.2f}s | σ: {_calibration_stats['std']:.2f}s | conf: {_calibration_stats['confidence']:.0%}")
 
-        # ── Cadence de la boucle ───────────────────────────────────────────
-        # Tour rapide pour un suivi fluide de la position; le fetch reste
-        # limité à FETCH_INTERVAL via le garde-fou en tête de boucle.
-        time.sleep(0.05)
+                                    # Mise à jour du cache SEULEMENT si pas d'offset manuel existant
+                                    # Protection des offsets définis manuellement par l'utilisateur
+                                    cache = _get_disk_cache()
+                                    ck = _cache_key(artist, title)
+                                    if ck in cache:
+                                        current_offset = cache[ck].get("offset", 0.5)
+                                        # Ne pas écraser si l'offset est significativement différent de 0.5 (indique un réglage manuel)
+                                        is_manual_offset = abs(current_offset - 0.5) > 0.1
+                                        if not is_manual_offset:
+                                            cache[ck]["offset"] = kalman_est
+                                            _mark_cache_dirty()
+                                            _flush_cache_if_dirty()
+                                        else:
+                                            print(f"[LYRICS] 🔒 Offset manuel protégé: {current_offset:+.2f}s (auto-calibration ignorée)")
+    
+                                    # Arrêt quand confiance > 90% et std < 0.3s
+                                    # OU après 50 samples (timeout pour éviter boucle infinie)
+                                    if ((_calibration_stats["confidence"] >= 0.9
+                                            and _calibration_stats["std"] is not None
+                                            and _calibration_stats["std"] < 0.3
+                                            and n >= 8)
+                                        or n >= 50):
+                                        if n >= 50:
+                                            print(f"[LYRICS] [WARN] calibration TEMPOUT (50 samples) - offset final : {_calibrated_offset:+.2f}s (σ={_calibration_stats['std']:.2f}s)")
+                                        else:
+                                            print(f"[LYRICS] [OK] calibration HAUTE PRÉCISION - offset final : {_calibrated_offset:+.2f}s (σ={_calibration_stats['std']:.2f}s, {_calibration_stats['outliers_removed']} outliers)")
+                                        _calibration_done = True
+                            except Exception:
+                                pass
+            except Exception:
+                pass  # bpm_source pas dispo
+    
+            # ── Mise à jour state ──────────────────────────────────────────────
+            if last_key is not None:
+                eff_pos = _effective_pos()
+                with _lock:
+                    if lyrics and lyrics["synced"]:
+                        idx = _current_idx(lyrics["synced"], eff_pos) \
+                              if eff_pos is not None and lyrics["synced"][0][0] is not None else 0
+                        _state = {
+                            "artist":      artist,
+                            "title":       title,
+                            "lines":       lyrics["synced"],
+                            "current_idx": idx,
+                            "position":    eff_pos,
+                            "has_sync":    lyrics["synced"][0][0] is not None,
+                            "loading":     False,  # <- Chargement terminé
+                        }
+                    else:
+                        _state = {
+                            "artist": artist, "title": title,
+                            "lines": [], "current_idx": 0, "position": None, "has_sync": False,
+                            "loading": False,  # <- Pas de lyrics trouvées
+                        }
+    
+            # ── Cadence de la boucle ───────────────────────────────────────────
+            # Tour rapide pour un suivi fluide de la position; le fetch reste
+            # limité à FETCH_INTERVAL via le garde-fou en tête de boucle.
+            time.sleep(0.05)
+        except Exception as e:
+            # Protection: empêche le thread de crasher définitivement
+            import traceback
+            print(f"[LYRICS] [WARN] Erreur dans la boucle principale: {e}")
+            print(f"[LYRICS] Stack trace: {traceback.format_exc()[-500:]}")  # Derniers 500 chars
+            time.sleep(1.0)
 
 
 # ── API publique ────────────────────────────────────────────────────────────────
@@ -2473,4 +2718,4 @@ def resync():
         _next_sample_pos = 5.0
         _first_listen_mode = True
     _kalman_init()
-    print("[LYRICS] 🔄 resync demandé — recherche + recalibration relancées")
+    print("[LYRICS] [REFRESH] resync demandé - recherche + recalibration relancées")

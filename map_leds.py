@@ -9,9 +9,18 @@ import sys
 import led_wave as _lw
 from openrgb.utils import RGBColor
 
-_lw._ensure_server()
+if not _lw._ensure_server():
+    print("\n[ERREUR] OpenRGB n'est pas accessible. Assurez-vous que:")
+    print("  1. OpenRGB est lance")
+    print("  2. Le SDK OpenRGB Python est installe: pip install openrgb-sdk")
+    sys.exit(1)
+
 dev = _lw._device
-dev.set_mode("direct")
+try:
+    dev.set_mode("direct")
+except Exception as e:
+    print(f"\n[ERREUR] Impossible de definir le mode 'direct': {e}")
+    sys.exit(1)
 
 total = len(dev.leds)
 print(f"\nDevice : {dev.name}  —  {total} LEDs totales")

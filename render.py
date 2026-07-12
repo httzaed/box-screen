@@ -22,6 +22,10 @@ WIDTH  = 1920
 HEIGHT = 462
 REFRESH_RATE = 1.0
 
+# ── Force visualizer state ─────────────────────────────────────────────────────
+_force_viz = False
+_force_viz_lock = threading.Lock()
+
 # ── Fond image pour les lyrics (lines.jpg) ──────────────────────────────────
 _LYRICS_BG_PATH = pathlib.Path(__file__).parent / "lines.jpg"
 _lyrics_bg_cache: "Image.Image | None" = None
@@ -261,6 +265,10 @@ _frame_lock = threading.Lock() if threading else None
 
 def _get_frame_key() -> str:
     """Génère une clé unique représentant l'état actuel à afficher."""
+    # Obtenir force_viz pour inclure dans la clé (invalide le cache si ça change)
+    with _force_viz_lock:
+        force_viz_val = _force_viz
+
     # Pour lyrics: artist + title + current_line_idx + position_tronquée
     try:
         import lyrics_source as _ls
@@ -271,13 +279,13 @@ def _get_frame_key() -> str:
             # Ajoute la position (tronquée à 2 secondes près) pour éviter le cache statique
             pos = state.get("position", 0)
             pos_bucket = int(pos // 2) if pos else 0
-            return f"lyrics:{state.get('artist','')}|{state.get('title','')}|{idx}|{pos_bucket}"
+            return f"lyrics:{state.get('artist','')}|{state.get('title','')}|{idx}|{pos_bucket}|force_viz={force_viz_val}"
     except:
         pass
 
-    # Pour autres layouts: key basée sur les gauges + temps
+    # Pour autres layouts: key basée sur les gauges + temps + force_viz
     now_second = int(datetime.now().strftime("%S"))
-    return f"{LAYOUT}|{now_second}"
+    return f"{LAYOUT}|{now_second}|force_viz={force_viz_val}"
 
 
 def _ema(key: str, value: float, alpha: float = 0.15) -> float:
@@ -830,6 +838,20 @@ def _draw_lyrics_hud(img: Image.Image) -> Image.Image:
     return result
 
 
+def _get_lyrics_cascade_mode() -> str:
+    """Cascade du layout lyrics : lyrics -> audio (viz) -> terminal."""
+    try:
+        import lyrics_source as _ls
+        state = _ls.get_state()
+        if state is None:
+            return "terminal"
+        if get_force_viz() or not state.get("lines"):
+            return "audio"
+        return "lyrics"
+    except ImportError:
+        return "terminal"
+
+
 def build_frame() -> Image.Image:
     # ── Check cache frame ────────────────────────────────────────────────────
     current_key = _get_frame_key()
@@ -877,6 +899,12 @@ def build_frame() -> Image.Image:
         return _draw_terminal_hud(img, gauges, now)
 
     if LAYOUT == "lyrics":
+        cascade_mode = _get_lyrics_cascade_mode()
+        if cascade_mode == "audio":
+            import render_audio_viz
+            return render_audio_viz.build_frame(bg=img)
+        if cascade_mode == "terminal":
+            return _draw_terminal_hud(img, gauges, now)
         return _draw_lyrics_hud(img)
 
     if LAYOUT == "clock":
@@ -925,3 +953,19 @@ def build_frame() -> Image.Image:
             _frame_cache["last_frame"] = img.copy()
 
     return img
+
+
+# ── Force visualizer API ─────────────────────────────────────────────────────────
+def set_force_viz(value: bool) -> bool:
+    """Force le visualiseur audio (ignorer les lyrics).
+    Returns True si la valeur a changé."""
+    global _force_viz
+    with _force_viz_lock:
+        old = _force_viz
+        _force_viz = value
+        return old != value
+
+def get_force_viz() -> bool:
+    """Retourne l'état actuel du force visualizer."""
+    with _force_viz_lock:
+        return _force_viz

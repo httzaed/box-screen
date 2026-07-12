@@ -1,12 +1,17 @@
 """
 led_fans.py — Contrôleur LED pour Box Screen
   Mapping réel (led_map.json) :
-    fans  : indices 0-14   (15 LEDs en parallèle sur tous les fans)
-    case  : indices 15-49  (35 LEDs)
-    skip  : indices 50-119 (ignorées)
+    fans     : indices 0-14   (15 LEDs en parallèle sur tous les fans)
+    case     : indices 15-49  (35 LEDs)
+    keyboard : device séparé (Logitech G915, 117 LEDs)
+    skip     : indices 50-119 (ignorées sur le device principal)
 
-  Modes case  : off | wave | beat
-  Modes fans  : off | spin_bpm | spin_fixed | static
+  Modes case     : off | wave | beat
+  Modes fans     : off | spin_bpm | spin_fixed | static | beat_pulse | beat_pulse_dual
+  Modes keyboard : off | static | wave | beat_pulse | beat_pulse_dual | sync_fans
+
+  beat_pulse_dual : mix de fan_color (basses) et fan_color2 (aigus) en temps réel
+  sync_fans      : le clavier mirror exactement les fans (mêmes couleurs, même timing)
 """
 import time
 import math
@@ -23,20 +28,30 @@ _HERE = Path(__file__).parent
 def _load_map():
     try:
         data = json.loads((_HERE / "led_map.json").read_text())
-        groups     = data["groups"]
-        zone_idx   = data["zone_idx"]
-        zone_offset = data["zone_offset"]
-        fans_idxs  = sorted(groups.get("fans", []))
-        case_idxs  = sorted(groups.get("case", []))
-        mb_idxs    = sorted(groups.get("mainboard", []))
-        return zone_idx, zone_offset, fans_idxs, case_idxs, mb_idxs
+        groups       = data["groups"]
+        zone_idx     = data["zone_idx"]
+        zone_offset  = data["zone_offset"]
+        fans_idxs    = sorted(groups.get("fans", []))
+        case_idxs    = sorted(groups.get("case", []))
+        mb_idxs      = sorted(groups.get("mainboard", []))
+
+        # Clavier (device séparé)
+        kb_cfg = data.get("keyboard", {})
+        kb_device_idx = kb_cfg.get("device_idx", None)
+        kb_leds = kb_cfg.get("leds", 117)  # Valeur par défaut pour G915
+
+        return zone_idx, zone_offset, fans_idxs, case_idxs, mb_idxs, kb_device_idx, kb_leds
     except Exception as e:
         print(f"[LED] led_map.json introuvable ou invalide ({e}) — valeurs par défaut")
-        return 1, 0, list(range(0, 15)), list(range(15, 50)), []
+        return 1, 0, list(range(0, 15)), list(range(15, 50)), [], None, 117
 
-ZONE_IDX, ZONE_OFFSET, FAN_IDXS, CASE_IDXS, MB_IDXS = _load_map()
+ZONE_IDX, ZONE_OFFSET, FAN_IDXS, CASE_IDXS, MB_IDXS, KEYBOARD_DEVICE_IDX, KEYBOARD_LEDS = _load_map()
 FAN_LEDS  = len(FAN_IDXS)   # 15 — position 0-14 = 1 LED sur chaque fan simultanément
 FRAME_TIME = 0.020           # ~50 fps
+
+# ── Clavier OpenRGB ─────────────────────────────────────────────────────────────
+_keyboard_device = None
+_keyboard_lock = threading.Lock()
 
 # ── Palette ───────────────────────────────────────────────────────────────────
 COLORS = {
@@ -46,27 +61,70 @@ COLORS = {
     "teal":   (  0, 210, 150),
     "green":  (  0, 255, 100),
     "yellow": (255, 200,   0),
-    "orange": (255,  85,   0),
+    "orange": (255,  40,   0),
     "red":    (255,   0,   0),
     "pink":   (255,  20, 100),
     "white":  (255, 255, 255),
 }
 
+# ── Couleur partagée pour synchronisation avec visualiseur ───────────────────────
+import threading
+_fan_color_lock = threading.Lock()
+_current_fan_color = (255, 105, 180)  # Couleur actuelle des fans (RGB 0-255)
+_fan_mix_ratio = 0.0  # Ratio de mix 0-1 (pour debug)
+
+# ── State intelligent pour beat_pulse_dual ─────────────────────────────────────
+class BeatPulseDualState:
+    """État partagé pour le beat_pulse_dual intelligent."""
+    __slots__ = (
+        'beat_count', 'last_beat_seq', 'last_beat_time',
+        'last_colors'
+    )
+
+    def __init__(self):
+        self.beat_count = 0
+        self.last_beat_seq = -1
+        self.last_beat_time = 0.0
+        self.last_colors = None  # Pour détecter les changements de couleurs
+
+    def should_reset(self, col1, col2):
+        """Vérifie si les couleurs ont changé et réinitialise si nécessaire."""
+        current_colors = (col1, col2)
+        if self.last_colors != current_colors:
+            self.last_colors = current_colors
+            self.beat_count = 0  # Reset pour synchroniser l'alternance
+            return True
+        return False
+
+
+_dual_state = BeatPulseDualState()
+
+
+def _get_current_fan_color() -> tuple:
+    """Retourne la couleur actuelle des fans pour synchronisation."""
+    with _fan_color_lock:
+        return _current_fan_color
+
 # ── Config runtime ────────────────────────────────────────────────────────────
 _CFG_FILE = _HERE / "led_config.json"
 
 _CFG_DEFAULTS = {
-    "case_mode":   "beat",
-    "fan_mode":    "spin",
-    "case_color":  "violet",
-    "case_color2": "cyan",
-    "fan_color":   "violet",
-    "fan_color2":  "cyan",
-    "case_speed":  1.0,
-    "fan_speed":   1.0,
-    "case_length": 1.0,
-    "brightness":  1.0,
-    "case_decay":  0.45,
+    "case_mode":     "beat",
+    "fan_mode":      "static",      # → beat_pulse_dual auto quand musique détectée
+    "keyboard_mode": "sync_fans",  # le clavier sync par défaut avec les fans
+    "case_color":    "violet",
+    "case_color2":   "cyan",
+    "fan_color":     "violet",
+    "fan_color2":    "cyan",        # utilisée pour les highs en beat_pulse_dual
+    "keyboard_color": "violet",
+    "keyboard_color2": "cyan",
+    "case_speed":    1.0,
+    "fan_speed":     1.0,
+    "keyboard_speed": 1.0,
+    "case_length":   1.0,
+    "brightness":    1.0,
+    "case_decay":    0.45,
+    "keyboard_enabled": True,
 }
 
 def _load_cfg():
@@ -90,6 +148,34 @@ def _save_cfg(cfg):
 _cfg_lock = threading.Lock()
 _cfg = _load_cfg()
 
+# ── Debounce pour l'écriture de la config ───────────────────────────────────────
+_cfg_dirty = False
+_cfg_timer = None
+_cfg_timer_lock = threading.Lock()
+_DEBOUNCE_DELAY = 2.0  # secondes
+
+def _flush_config():
+    """Écrit la config sur disque (appelé par le timer)."""
+    global _cfg_dirty, _cfg_timer
+    with _cfg_lock:
+        with _cfg_timer_lock:
+            _cfg_timer = None
+            if _cfg_dirty:
+                _save_cfg(dict(_cfg))
+                _cfg_dirty = False
+
+def _schedule_flush():
+    """Programme l'écriture de la config avec debounce."""
+    global _cfg_timer
+    with _cfg_timer_lock:
+        # Annuler le timer existant
+        if _cfg_timer is not None:
+            _cfg_timer.cancel()
+        # Programmer un nouveau timer
+        _cfg_timer = threading.Timer(_DEBOUNCE_DELAY, _flush_config)
+        _cfg_timer.daemon = True  # Ne bloque pas l'arrêt du programme
+        _cfg_timer.start()
+
 def get_cfg() -> dict:
     with _cfg_lock:
         return dict(_cfg)
@@ -99,21 +185,77 @@ def set_cfg(**kwargs):
         for k, v in kwargs.items():
             if k in _cfg:
                 _cfg[k] = v
-        _save_cfg(dict(_cfg))
+        # Marquer dirty et programmer l'écriture
+        _cfg_dirty = True
+        _schedule_flush()
 
 
 # ── OpenRGB singleton ─────────────────────────────────────────────────────────
 def _connect():
+    """Connecte au device principal (case/fans)."""
     try:
         import led_wave as _lw
         if not _lw._ensure_server():
             return False, None
         device = _lw._device
-        print(f"[LED] {device.name}  —  zones: {[z.name for z in device.zones]}")
+        print(f"[LED] Device principal: {device.name}  —  zones: {[z.name for z in device.zones]}")
         return True, device
     except Exception as e:
-        print(f"[LED] connexion échouée: {e}")
+        print(f"[LED] connexion device principal échouée: {e}")
         return False, None
+
+
+def _connect_keyboard():
+    """Connecte au clavier RGB (device séparé)."""
+    global _keyboard_device
+    with _keyboard_lock:
+        if _keyboard_device is not None:
+            return True, _keyboard_device
+
+        if KEYBOARD_DEVICE_IDX is None:
+            print("[LED] KEYBOARD_DEVICE_IDX non défini — clavier désactivé")
+            return False, None
+
+        try:
+            import led_wave as _lw
+            if not _lw._ensure_server():
+                return False, None
+
+            # Le clavier est un device séparé dans le client OpenRGB
+            from openrgb import OpenRGBClient
+            client = OpenRGBClient()
+
+            # Récupère le device par son index
+            if KEYBOARD_DEVICE_IDX < len(client.devices):
+                kb = client.devices[KEYBOARD_DEVICE_IDX]
+                # set_mode "direct" pour le contrôle LED
+                try:
+                    kb.set_mode("direct")
+                except Exception:
+                    try:
+                        kb.set_mode("Direct")
+                    except Exception:
+                        pass  # Certains claviers n'ont pas de mode direct
+
+                _keyboard_device = kb
+                print(f"[LED] Clavier connecté: {kb.name} ({len(kb.leds)} LEDs)")
+                return True, _keyboard_device
+            else:
+                print(f"[LED] Device index {KEYBOARD_DEVICE_IDX} invalide — clavier désactivé")
+                return False, None
+        except Exception as e:
+            print(f"[LED] connexion clavier échouée: {e}")
+            return False, None
+
+
+def _ensure_keyboard():
+    """S'assure que le clavier est connecté (réessaye si nécessaire)."""
+    global _keyboard_device
+    if _keyboard_device is not None:
+        return True, _keyboard_device
+
+    # Tenter de reconnecter
+    return _connect_keyboard()
 
 
 # ── Vitesse rotation ──────────────────────────────────────────────────────────
@@ -142,21 +284,34 @@ def _clamp(v): return max(0, min(255, int(v)))
 
 def run(stop_event: threading.Event, get_colors=None):
     import traceback
+    print(f"[LED] run() START: stop_event={stop_event.is_set()}")
     while not stop_event.is_set():
         try:
+            print(f"[LED] run() calling _run_inner()")
             _run_inner(stop_event)
+            # Si _run_inner retourne sans exception (e.g. connexion échouée),
+            # attendre avant de réessayer pour éviter une boucle serrée
+            time.sleep(2)
         except Exception:
             traceback.print_exc()
             time.sleep(1)
+    print(f"[LED] run() END: stop_event={stop_event.is_set()}")
 
 
 def _run_inner(stop_event):
+    print(f"[LED] _run_inner START: stop_event={stop_event.is_set()}")
     ok, device = _connect()
+    print(f"[LED] _connect returned: ok={ok}")
     if not ok:
+        print(f"[LED] _connect FAILED, returning")
         return
+
+    # Connecter le clavier si enabled
+    kb_ok, keyboard = _connect_keyboard() if _CFG_DEFAULTS.get("keyboard_enabled", True) else (False, None)
 
     total_leds  = len(device.leds)
     all_colors  = [RGBColor(0, 0, 0)] * total_leds
+    kb_colors   = [RGBColor(0, 0, 0)] * KEYBOARD_LEDS if keyboard else None
 
     # BPM source
     try:
@@ -173,12 +328,30 @@ def _run_inner(stop_event):
     hue_off       = 0.0
     breathe_t     = 0.0
 
+    # Auto mode: détecte la musique et passe les fans en beat_pulse
+    last_fan_mode = "spin"
+    original_fan_mode = last_fan_mode
+    music_detected = False
+    music_silence_time = 0.0
+    MUSIC_THRESHOLD = 0.15   # niveau audio pour détecter la musique
+    SILENCE_DELAY = 2.0       # secondes de silence avant de quitter beat_pulse
+
     import colorsys
 
     print(f"[LED] fans={FAN_IDXS}  case={CASE_IDXS[0]}..{CASE_IDXS[-1]}  total={total_leds}")
+    if keyboard:
+        print(f"[LED] Clavier actif: {keyboard.name} ({KEYBOARD_LEDS} LEDs)")
+
+    # Debug timer (affiche le niveau audio toutes les 5s)
+    _debug_last_print = 0.0
 
     while not stop_event.is_set():
         now = time.monotonic()
+
+        # Debug output for troubleshooting (first thing in loop)
+        if now % 1.0 < 0.05:  # Print every second
+            print(f"[LED] LOOP RUNNING: now={now:.1f}")
+
         cfg = get_cfg()
 
         bri        = cfg["brightness"]
@@ -243,10 +416,66 @@ def _run_inner(stop_event):
                 try:
                     import bpm_source as _bs
                     level = _bs.get_level()
+                    # Minimum 10% brightness to ensure LEDs are visible
+                    level = max(level, 0.1)
                 except Exception:
-                    level = 0.0
+                    level = 0.5  # Fallback to 50% brightness if BPM source fails
                 for idx in active:
                     all_colors[ZONE_OFFSET + idx] = mk(col1[0], col1[1], col1[2], level)
+
+            elif mode == "beat_pulse_dual":
+                # ═══════════════════════════════════════════════════════════════
+                # BEAT PULSE DUAL - ALTERNANCE RAPIDE
+                # • Beat 1 → col1, Beat 2 → col2, Beat 3 → col1, etc.
+                # • Intensité basée sur l'énergie audio
+                # • Transition instantanée sur chaque beat détecté
+                # ═══════════════════════════════════════════════════════════════
+                try:
+                    import bpm_source as _bs
+                    level = _bs.get_level()
+                    _, new_beat_seq = _bs.get_beat_event()
+                except Exception:
+                    level = 0.0
+                    new_beat_seq = _dual_state.last_beat_seq
+
+                # Reset si les couleurs ont changé
+                _dual_state.should_reset(col1, col2)
+
+                # Détection de nouveau beat
+                if new_beat_seq != _dual_state.last_beat_seq:
+                    _dual_state.last_beat_seq = new_beat_seq
+                    _dual_state.beat_count += 1
+                    _dual_state.last_beat_time = now
+                    beat_detected = True
+                else:
+                    beat_detected = False
+
+                # Alternance de couleur sur chaque beat
+                # beat_count pair → col1, beat_count impair → col2
+                use_col2 = (_dual_state.beat_count % 2) == 1
+
+                # Intensité basée sur le niveau audio
+                intensity = level
+                if beat_detected:
+                    intensity = min(1.0, intensity * 1.3)  # Boost sur beat
+                intensity = max(intensity, 0.05)  # Minimum visible
+
+                # LED éteintes si silence
+                if intensity < 0.03:
+                    current_color = (0, 0, 0)
+                    for idx in active:
+                        all_colors[ZONE_OFFSET + idx] = RGBColor(0, 0, 0)
+                else:
+                    # Couleur actuelle selon alternance
+                    current_color = col2 if use_col2 else col1
+                    for idx in active:
+                        all_colors[ZONE_OFFSET + idx] = mk(*current_color, intensity)
+
+                # Partage la couleur avec le visualiseur
+                with _fan_color_lock:
+                    global _current_fan_color, _fan_mix_ratio
+                    _current_fan_color = current_color
+                    _fan_mix_ratio = 1.0 if use_col2 else 0.0
 
             elif mode == "gradient":
                 wave_off = math.fmod(wave_off + 0.4 * speed, nl)
@@ -306,8 +535,39 @@ def _run_inner(stop_event):
                     all_colors[ZONE_OFFSET + idx] = mk(
                         col[0]*(b_led+dark), col[1]*(b_led+dark), col[2]*(b_led+dark))
 
+        # ── Détection musique → auto beat_pulse sur les fans ────────────────
+        try:
+            import bpm_source as _bs
+            current_level = _bs.get_level()
+            current_bpm = _bs.get_bpm()
+
+            # Musique détectée si BPM valide OU niveau audio élevé
+            is_music = (current_bpm is not None) or (current_level > MUSIC_THRESHOLD)
+
+            if is_music:
+                if not music_detected:
+                    # Début de la musique → passe en beat_pulse
+                    music_detected = True
+                    original_fan_mode = cfg.get("fan_mode", "spin")
+                    print(f"[LED] Musique détectée → fans beat_pulse_dual (mode original: {original_fan_mode})")
+                music_silence_time = 0.0
+            else:
+                if music_detected:
+                    music_silence_time += FRAME_TIME
+                    # Après SILENCE_DELAY secondes de silence, revient au mode original
+                    if music_silence_time >= SILENCE_DELAY:
+                        music_detected = False
+                        print(f"[LED] Silence détecté → fans {original_fan_mode}")
+                else:
+                    music_silence_time = 0.0
+
+            # Utilise beat_pulse_dual si musique détectée, sinon le mode configuré
+            active_fan_mode = "beat_pulse_dual" if music_detected else cfg.get("fan_mode", "spin")
+        except Exception:
+            active_fan_mode = cfg.get("fan_mode", "spin")
+
         # ── Fans ─────────────────────────────────────────────────────────
-        animate_zone(cfg["fan_mode"], FAN_IDXS,
+        animate_zone(active_fan_mode, FAN_IDXS,
                      c(cfg["fan_color"]), c(cfg["fan_color2"]),
                      fan_spd, len(FAN_IDXS), beat_bright)
 
@@ -315,6 +575,56 @@ def _run_inner(stop_event):
         animate_zone(cfg["case_mode"], CASE_IDXS,
                      c(cfg["case_color"]), c(cfg["case_color2"]),
                      case_spd, n_case, beat_bright)
+
+        # ── Clavier ───────────────────────────────────────────────────────────
+        if keyboard and cfg.get("keyboard_enabled", True):
+            kb_mode = cfg.get("keyboard_mode", "sync_fans")
+            kb_spd = cfg.get("keyboard_speed", 1.0)
+
+            if kb_mode == "sync_fans":
+                # Le clavier mirror exactement les fans (couleurs + timing)
+                # Répète le pattern des fans sur tout le clavier
+                for kb_i in range(KEYBOARD_LEDS):
+                    # Répéter le pattern des 15 fans sur les 117 LEDs du clavier
+                    fan_idx = FAN_IDXS[kb_i % len(FAN_IDXS)]
+                    kb_colors[kb_i] = all_colors[ZONE_OFFSET + fan_idx]
+
+            elif kb_mode == "off":
+                for kb_i in range(KEYBOARD_LEDS):
+                    kb_colors[kb_i] = RGBColor(0, 0, 0)
+
+            elif kb_mode == "static":
+                col = c(cfg.get("keyboard_color", "violet"))
+                for kb_i in range(KEYBOARD_LEDS):
+                    kb_colors[kb_i] = mk(*col)
+
+            elif kb_mode == "beat_pulse":
+                # Beat pulse sur tout le clavier
+                try:
+                    import bpm_source as _bs
+                    level = _bs.get_level()
+                except Exception:
+                    level = 0.0
+                col = c(cfg.get("keyboard_color", "violet"))
+                # Baisser le seuil pour que ça s'allume même avec un faible niveau
+                level = max(level, 0.05)  # Minimum 5% pour voir quelque chose
+                for kb_i in range(KEYBOARD_LEDS):
+                    kb_colors[kb_i] = mk(col[0] * level, col[1] * level, col[2] * level)
+
+            elif kb_mode == "wave":
+                col1 = c(cfg.get("keyboard_color", "violet"))
+                col2 = c(cfg.get("keyboard_color2", "cyan"))
+                wave_off = math.fmod(wave_off + 0.6 * kb_spd, KEYBOARD_LEDS * 2)
+                cycle = KEYBOARD_LEDS * 2
+                for kb_i in range(KEYBOARD_LEDS):
+                    t = ((kb_i + int(wave_off)) % cycle) / cycle
+                    b = 0.3 + 0.7 * abs(math.sin(t * math.pi))
+                    kb_colors[kb_i] = mk(col1[0]*b, col1[1]*b, col1[2]*b)
+
+            try:
+                keyboard.set_colors(kb_colors)
+            except Exception:
+                pass  # Le clavier peut être déconnecté
 
         device.set_colors(all_colors)
         time.sleep(FRAME_TIME)
