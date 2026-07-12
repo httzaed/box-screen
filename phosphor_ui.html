@@ -466,32 +466,13 @@
     </div>
   </div>
 
-  <!-- ===== mode command bar ===== -->
-  <div data-modegroup style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
-    <button class="mode-btn" data-mode="ascii_vhs">[ ] ascii_vhs</button>
-    <button class="mode-btn" data-mode="video">[ ] video</button>
-    <button class="mode-btn" data-mode="image">[ ] image</button>
-    <button class="mode-btn" data-mode="audio">[ ] audio_viz</button>
-    <button class="mode-btn" data-mode="blank">[ ] blank</button>
-  </div>
-
-  <!-- ===== HUD style bar ===== -->
-  <div data-hudgroup style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
-    <button class="mode-btn" data-hud="full">[ ] full</button>
-    <button class="mode-btn" data-hud="terminal">[ ] terminal</button>
-    <button class="mode-btn" data-hud="clock">[ ] clock</button>
-    <button class="mode-btn" data-hud="split">[ ] split</button>
-    <button class="mode-btn" data-hud="tiles">[ ] tiles</button>
-    <button class="mode-btn" data-hud="matrix">[ ] matrix</button>
-    <button class="mode-btn" data-hud="lyrics">[ ] lyrics</button>
-    <button class="mode-btn" data-hud="audio_viz">[ ] audio_viz</button>
-  </div>
-
-  <!-- ===== Audio viz mode bar ===== -->
-  <div data-vizgroup style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
-    <button class="mode-btn" data-viz="ambience">[ ] ambience</button>
-    <button class="mode-btn" data-viz="spectrum">[ ] spectrum</button>
-    <button class="mode-btn" data-viz="waveform">[ ] waveform</button>
+  <!-- ===== cascade status bar ===== -->
+  <div class="pnl" style="padding:14px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+    <span class="lbl">&gt; display --cascade&nbsp;&nbsp;
+      <span id="cascade-state" style="color:var(--grn); font-size:13px;">--</span>
+      <span id="cascade-track" style="color:var(--dim); font-size:12px;"></span>
+    </span>
+    <span class="lbl">FORCE VIZ <button id="force-viz-btn" class="save-btn">[ off ]</button></span>
   </div>
 
   <!-- ===== hero: preview + system ===== -->
@@ -751,7 +732,7 @@
   <div class="pnl" style="padding:14px;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:9px;">
       <span class="lbl">&gt; tail -f /var/log/boxscreen.log</span>
-      <span class="lbl">keys: <span style="color:var(--grn);">1-5</span> mode · <span style="color:var(--grn);">spc</span> play · <span style="color:var(--grn);">↑↓</span> bright · <span style="color:var(--grn);">s</span> scene · <span style="color:var(--grn);">h</span> hud</span>
+      <span class="lbl">keys: <span style="color:var(--grn);">f</span> force viz · <span style="color:var(--grn);">spc</span> play · <span style="color:var(--grn);">↑↓</span> bright · <span style="color:var(--grn);">s</span> scene</span>
     </div>
     <div id="log">
       <div>[boot] firmware v9.16.2 · 5 led zones · audio engine ready</div>
@@ -1292,42 +1273,47 @@ function drawAudioViz() {
   const sw = screenCanvas.clientWidth;
   const sh = screenCanvas.clientHeight;
 
-  // Check if current mode is an audio visualization mode
-  // Audio viz is active when mode is 'audio' OR hud is 'audio_viz'
-  const isAudioMode = state.mode === 'audio' || state.hud === 'audio_viz';
+  // Preview canvas follows the cascade state
+  const cascadeMode = state.cascade || 'idle';
+  const forceViz = state.force_viz || false;
 
-  if (!isAudioMode) {
-    // Draw placeholder for non-audio modes
+  if (cascadeMode === 'lyrics' && !forceViz) {
+    // Lyrics mode - dark background with music note and current line
     sctx.fillStyle = '#010402';
     sctx.fillRect(0, 0, sw, sh);
 
-    // Draw mode name centered (terminal style)
+    // Draw music note
+    sctx.fillStyle = '#2bff88';
+    sctx.font = '24px "JetBrains Mono"';
+    sctx.textAlign = 'center';
+    sctx.textBaseline = 'middle';
+    sctx.shadowColor = '#2bff88';
+    sctx.shadowBlur = 8;
+    sctx.fillText('♪', sw / 2, sh / 2 - 20);
+
+    // Draw current line if available
+    const currentLine = document.getElementById('lyrics-current-line')?.textContent || '';
+    if (currentLine) {
+      sctx.font = '14px "JetBrains Mono"';
+      sctx.fillText(currentLine, sw / 2, sh / 2 + 20);
+    }
+    sctx.shadowBlur = 0;
+  } else if (cascadeMode === 'audio' || forceViz) {
+    // Audio viz mode - always use ambience for preview
+    drawAmbience(sctx, sw, sh);
+  } else {
+    // Idle/ascii mode - dark background with [ASCII_VHS]
+    sctx.fillStyle = '#010402';
+    sctx.fillRect(0, 0, sw, sh);
+
     sctx.fillStyle = '#2bff88';
     sctx.font = '14px "JetBrains Mono"';
     sctx.textAlign = 'center';
     sctx.textBaseline = 'middle';
     sctx.shadowColor = '#2bff88';
     sctx.shadowBlur = 8;
-
-    const displayMode = state.mode || state.hud || 'unknown';
-    sctx.fillText(`[${displayMode.toUpperCase()}]`, sw / 2, sh / 2);
+    sctx.fillText('[ASCII_VHS]', sw / 2, sh / 2);
     sctx.shadowBlur = 0;
-  } else {
-    // Audio visualization - use viz_mode
-    const vizMode = state.viz_mode || 'ambience';
-
-    // Check if ambience mode is selected
-    if (vizMode === 'ambience') {
-      drawAmbience(sctx, sw, sh);
-    } else if (vizMode === 'spectrum') {
-      sctx.fillStyle = '#010402';
-      sctx.fillRect(0, 0, sw, sh);
-      drawSpectrum(sctx, sw, sh);
-    } else {
-      sctx.fillStyle = '#010402';
-      sctx.fillRect(0, 0, sw, sh);
-      drawWaveform(sctx, sw, sh);
-    }
   }
 
   const mw = miniCanvas.clientWidth;
@@ -1375,13 +1361,19 @@ async function poll() {
     state = { ...state, ...data };
 
     // Update UI
-    updateModeButtons();
-    updateHudButtons();
-    updateVizButtons();
     updateAudioMeters();
     updateLeds();
     updateConnection(true);
     updateTransport();
+
+    // Update cascade state display
+    const cascadeLabels = { lyrics: '♪ lyrics', audio: '≋ audio viz', idle: '▒ ascii' };
+    const cs = document.getElementById('cascade-state');
+    if (cs) cs.textContent = cascadeLabels[state.cascade] || '--';
+    const ct = document.getElementById('cascade-track');
+    if (ct) ct.textContent = (state.cascade !== 'idle' && state.track) ? '· ' + state.track : '';
+    const fv = document.getElementById('force-viz-btn');
+    if (fv) fv.textContent = state.force_viz ? '[ on ]' : '[ off ]';
 
   } catch (e) {
     updateConnection(false);
@@ -1398,30 +1390,6 @@ function updateConnection(connected) {
   if (hostIp) {
     hostIp.textContent = connected ? location.host : '--';
   }
-}
-
-function updateModeButtons() {
-  document.querySelectorAll('[data-mode]').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.mode === state.mode);
-    const txt = btn.textContent.replace(/^\[.\]\s*/, '');
-    btn.firstChild.textContent = (btn.classList.contains('active') ? '[*] ' : '[ ] ') + txt;
-  });
-}
-
-function updateHudButtons() {
-  document.querySelectorAll('[data-hud]').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.hud === state.hud);
-    const txt = btn.textContent.replace(/^\[.\]\s*/, '');
-    btn.firstChild.textContent = (btn.classList.contains('active') ? '[*] ' : '[ ] ') + txt;
-  });
-}
-
-function updateVizButtons() {
-  document.querySelectorAll('[data-viz]').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.viz === (state.viz_mode || 'ambience'));
-    const txt = btn.textContent.replace(/^\[.\]\s*/, '');
-    btn.firstChild.textContent = (btn.classList.contains('active') ? '[*] ' : '[ ] ') + txt;
-  });
 }
 
 function updateAudioMeters() {
@@ -1568,26 +1536,17 @@ function log(msg) {
 }
 
 // ── Event Handlers ─────────────────────────────────────────────────────────────
-document.querySelectorAll('[data-mode]').forEach(btn => {
-  btn.addEventListener('click', () => post(`/api/mode/${btn.dataset.mode}`));
-});
-
-document.querySelectorAll('[data-hud]').forEach(btn => {
-  btn.addEventListener('click', () => post(`/api/hud/${btn.dataset.hud}`));
-});
-
-// Audio viz mode handlers
-document.querySelectorAll('[data-viz]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const mode = btn.dataset.viz;
-
-    // Ambience est maintenant supporte par le backend (panel physique inclus)
-    state.viz_mode = mode;
-    updateVizButtons();
-    post(`/api/viz/${mode}`);
-    log(`viz mode → ${mode}`);
+// Force viz button handler
+const forceVizBtn = document.getElementById('force-viz-btn');
+if (forceVizBtn) {
+  forceVizBtn.addEventListener('click', () => {
+    const newState = !state.force_viz;
+    post('/api/cascade/force-viz/' + (newState ? 'on' : 'off'));
+    state.force_viz = newState;
+    forceVizBtn.textContent = newState ? '[ on ]' : '[ off ]';
+    log(`force viz → ${newState ? 'on' : 'off'}`);
   });
-});
+}
 
 // Zone selection handlers
 document.querySelectorAll('.zone-btn').forEach(btn => {
@@ -1906,18 +1865,11 @@ setInterval(updateClock, 1000);
 updateClock();
 
 // \u2500\u2500 Keyboard Shortcuts \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-const modeKeys = ['ascii_vhs', 'video', 'image', 'audio', 'blank'];
-
 window.addEventListener('keydown', (e) => {
   // Ne pas intercepter la frappe dans les champs de saisie
   if (e.target.matches('input, select, textarea')) return;
 
   const k = e.key;
-
-  if (k >= '1' && k <= '5') {
-    const idx = parseInt(k) - 1;
-    if (modeKeys[idx]) post(`/api/mode/${modeKeys[idx]}`);
-  }
 
   if (k === ' ') {
     e.preventDefault();
@@ -1934,7 +1886,7 @@ window.addEventListener('keydown', (e) => {
     }
   }
 
-  if (k.toLowerCase() === 'h') document.querySelector('.toggle-btn')?.click();
+  if (k.toLowerCase() === 'f') document.getElementById('force-viz-btn')?.click();
   if (k.toLowerCase() === 's') document.getElementById('savescene')?.click();
 });
 

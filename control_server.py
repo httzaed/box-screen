@@ -427,6 +427,14 @@ class _Handler(BaseHTTPRequestHandler):
                     state["viz_mode"] = render_audio_viz.get_viz_mode()
                 except Exception:
                     state["viz_mode"] = "spectrum"
+                # Add cascade mode and force_viz
+                try:
+                    import render
+                    state["cascade"] = render._get_lyrics_cascade_mode()
+                    state["force_viz"] = render.get_force_viz()
+                except Exception:
+                    state["cascade"] = None
+                    state["force_viz"] = False
                 # Add audio data for Phosphor UI
                 try:
                     import bpm_source
