@@ -106,6 +106,9 @@ def _save_state():
 
 # ── State ──────────────────────────────────────────────────────────────────
 _mode_idx, _hud_idx = _load_state()
+# Cascade only : l'app boote toujours sur audio+lyrics (la cascade fait le reste)
+_mode_idx = MODES.index("audio")
+_hud_idx  = HUD_STYLES.index("lyrics")
 _mode_lock  = threading.Lock()
 _stop_event = threading.Event()
 _panel      = None
