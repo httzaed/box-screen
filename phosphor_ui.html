@@ -466,7 +466,7 @@
     </div>
   </div>
 
-  <!-- ===== cascade status bar ===== -->
+  <!-- ===== cascade only : bandeau d'état ===== -->
   <div class="pnl" style="padding:14px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
     <span class="lbl">&gt; display --cascade&nbsp;&nbsp;
       <span id="cascade-state" style="color:var(--grn); font-size:13px;">--</span>
@@ -805,7 +805,11 @@ function updateTransport() {
 }
 
 let lastBeatSeq = -1;
-let lastBeatTime = 0;  // Timestamp du dernier beat pour impulsion decroissante
+let lastBeatTime = 0;
+let displayLevel = 0;   // niveau lisse pour les VU (rendu 60fps)
+let dashboardViz = 'ambience';  // visuel du DASHBOARD (independant du viz du panel)
+const vuLEl = document.getElementById('vuL');
+const vuREl = document.getElementById('vuR');  // Timestamp du dernier beat pour impulsion decroissante
 let uptimeStart = Date.now();
 let lastAmbienceClick = 0;  // Timestamp du dernier clic sur mode ambience (pour timeout 30s)
 
@@ -1105,7 +1109,7 @@ function drawAmbience(ctx, w, h) {
 
   // Beat impulsion decroissante (1→0 sur 150ms)
   const now = performance.now();
-  const beat = Math.max(0, 1 - (now - lastBeatTime) / 150);
+  const beat = Math.exp(-(now - lastBeatTime) / 90) * (now - lastBeatTime < 400 ? 1 : 0);
 
   // Créer ou réutiliser les gradients de fond (2 versions: beat/no-beat)
   const maxDim = Math.max(w, h);
@@ -1258,41 +1262,81 @@ function drawAudioViz() {
   if (!sctx || !mctx) return;
 
   // Interpolation donnees audio -> affichage, a CHAQUE frame et pour TOUS les modes
-  // (sinon l'ambience et le mini-spectre ne recoivent jamais les niveaux)
+  // Asymetrique : attaque rapide (transitoires nettes), retombee douce
   for (let i = 0; i < audioData.bands.length; i++) {
-    audioData.bands[i] += ((targetBands[i] || 0) - audioData.bands[i]) * 0.35;
+    const tgt = targetBands[i] || 0;
+    const k = tgt > audioData.bands[i] ? 0.65 : 0.28;
+    audioData.bands[i] += (tgt - audioData.bands[i]) * k;
   }
   if (audioData.wave.length !== targetWave.length) {
     audioData.wave = targetWave.slice();
   } else {
     for (let i = 0; i < audioData.wave.length; i++) {
-      audioData.wave[i] += (targetWave[i] - audioData.wave[i]) * 0.35;
+      audioData.wave[i] += (targetWave[i] - audioData.wave[i]) * 0.55;
     }
   }
+  // VU meters a 60 fps (lisses, attaque rapide / retombee douce)
+  displayLevel += ((state.level || 0) - displayLevel) * ((state.level || 0) > displayLevel ? 0.55 : 0.18);
+  if (vuLEl) vuLEl.style.height = (displayLevel * 100) + '%';
+  if (vuREl) vuREl.style.height = (displayLevel * 100) + '%';
 
   const sw = screenCanvas.clientWidth;
   const sh = screenCanvas.clientHeight;
 
-  // Preview canvas follows the cascade state
-  // Ambience = toujours visible sauf idle (ASCII)
-  const cascadeMode = state.cascade || 'idle';
+  // Check if current mode is an audio visualization mode
+  // Audio viz is active when mode is 'audio' OR hud is 'audio_viz'
+  const isAudioMode = state.mode === 'audio' || state.hud === 'audio_viz';
 
-  if (cascadeMode === 'idle') {
-    // Idle/ascii mode - dark background with [ASCII_VHS]
+  if (!isAudioMode) {
+    // Draw placeholder for non-audio modes
     sctx.fillStyle = '#010402';
     sctx.fillRect(0, 0, sw, sh);
 
+    // Draw mode name centered (terminal style)
     sctx.fillStyle = '#2bff88';
     sctx.font = '14px "JetBrains Mono"';
     sctx.textAlign = 'center';
     sctx.textBaseline = 'middle';
     sctx.shadowColor = '#2bff88';
     sctx.shadowBlur = 8;
-    sctx.fillText('[ASCII_VHS]', sw / 2, sh / 2);
+
+    const displayMode = state.mode || state.hud || 'unknown';
+    sctx.fillText(`[${displayMode.toUpperCase()}]`, sw / 2, sh / 2);
     sctx.shadowBlur = 0;
   } else {
-    // Music playing (lyrics OR audio) -> always ambience
-    drawAmbience(sctx, sw, sh);
+    // Audio visualization - use viz_mode
+    // Preview piloté par la cascade ; ambience = visuel dashboard de l'état « viz »
+    const cascade = state.cascade || 'audio';
+    if (cascade === 'audio') {
+      drawAmbience(sctx, sw, sh);
+    } else if (cascade === 'lyrics') {
+      sctx.fillStyle = '#010402';
+      sctx.fillRect(0, 0, sw, sh);
+      sctx.fillStyle = '#2bff88';
+      sctx.font = '16px "JetBrains Mono"';
+      sctx.textAlign = 'center';
+      sctx.textBaseline = 'middle';
+      sctx.shadowColor = '#2bff88';
+      sctx.shadowBlur = 8;
+      sctx.fillText('♪ lyrics', sw / 2, sh / 2 - 18);
+      sctx.font = '13px "JetBrains Mono"';
+      sctx.fillStyle = '#19c46a';
+      sctx.fillText((state.current_line || '…').slice(0, 60), sw / 2, sh / 2 + 14);
+      sctx.shadowBlur = 0;
+      sctx.textAlign = 'left';
+    } else {
+      sctx.fillStyle = '#010402';
+      sctx.fillRect(0, 0, sw, sh);
+      sctx.fillStyle = '#2bff88';
+      sctx.font = '15px "JetBrains Mono"';
+      sctx.textAlign = 'center';
+      sctx.textBaseline = 'middle';
+      sctx.shadowColor = '#2bff88';
+      sctx.shadowBlur = 8;
+      sctx.fillText('[ASCII_VHS]', sw / 2, sh / 2);
+      sctx.shadowBlur = 0;
+      sctx.textAlign = 'left';
+    }
   }
 
   const mw = miniCanvas.clientWidth;
@@ -1336,23 +1380,20 @@ async function poll() {
     const res = await fetch('/api/status');
     const data = await res.json();
 
-    // Le backend gere viz_mode (ambience inclus) — merge direct
     state = { ...state, ...data };
 
-    // Update UI
+    // Update UI — bandeau cascade
+    const cascadeLabels = { lyrics: '♪ lyrics', audio: '≋ audio viz', idle: '▒ ascii' };
+    const csEl = document.getElementById('cascade-state');
+    if (csEl) csEl.textContent = cascadeLabels[state.cascade] || '--';
+    const ctEl = document.getElementById('cascade-track');
+    if (ctEl) ctEl.textContent = (state.cascade !== 'idle' && state.track) ? '· ' + state.track : '';
+    const fvEl = document.getElementById('force-viz-btn');
+    if (fvEl) fvEl.textContent = state.force_viz ? '[ on ]' : '[ off ]';
     updateAudioMeters();
     updateLeds();
     updateConnection(true);
     updateTransport();
-
-    // Update cascade state display
-    const cascadeLabels = { lyrics: '♪ lyrics', audio: '≋ audio viz', idle: '▒ ascii' };
-    const cs = document.getElementById('cascade-state');
-    if (cs) cs.textContent = cascadeLabels[state.cascade] || '--';
-    const ct = document.getElementById('cascade-track');
-    if (ct) ct.textContent = (state.cascade !== 'idle' && state.track) ? '· ' + state.track : '';
-    const fv = document.getElementById('force-viz-btn');
-    if (fv) fv.textContent = state.force_viz ? '[ on ]' : '[ off ]';
 
   } catch (e) {
     updateConnection(false);
@@ -1371,6 +1412,8 @@ function updateConnection(connected) {
   }
 }
 
+// (cascade only : plus de boutons mode/hud/viz à mettre à jour)
+
 function updateAudioMeters() {
   const bpm = state.bpm || 0;
   const level = state.level || 0;
@@ -1388,10 +1431,7 @@ function updateAudioMeters() {
   }
 
   // VU meters
-  const vuL = document.getElementById('vuL');
-  const vuR = document.getElementById('vuR');
-  if (vuL) vuL.style.height = (level * 100) + '%';
-  if (vuR) vuR.style.height = (level * 100) + '%';
+  // VU meters : mis a jour a 60 fps dans drawAudioViz (displayLevel)
 
   // Only generate synthetic data if no SSE audio event received in the last 2 seconds
   const timeSinceLastSSE = Date.now() - sseAudioTimestamp;
@@ -1515,17 +1555,14 @@ function log(msg) {
 }
 
 // ── Event Handlers ─────────────────────────────────────────────────────────────
-// Force viz button handler
-const forceVizBtn = document.getElementById('force-viz-btn');
-if (forceVizBtn) {
-  forceVizBtn.addEventListener('click', () => {
-    const newState = !state.force_viz;
-    post('/api/cascade/force-viz/' + (newState ? 'on' : 'off'));
-    state.force_viz = newState;
-    forceVizBtn.textContent = newState ? '[ on ]' : '[ off ]';
-    log(`force viz → ${newState ? 'on' : 'off'}`);
-  });
-}
+// Cascade only : plus de sélection de modes. FORCE VIZ = seul réglage.
+document.getElementById('force-viz-btn')?.addEventListener('click', () => {
+  const next = !state.force_viz;
+  post('/api/cascade/force-viz/' + (next ? 'on' : 'off'));
+  state.force_viz = next;  // feedback immédiat, confirmé au prochain poll
+  const fv = document.getElementById('force-viz-btn');
+  if (fv) fv.textContent = next ? '[ on ]' : '[ off ]';
+});
 
 // Zone selection handlers
 document.querySelectorAll('.zone-btn').forEach(btn => {
@@ -1850,6 +1887,8 @@ window.addEventListener('keydown', (e) => {
 
   const k = e.key;
 
+  if (k.toLowerCase() === 'f') document.getElementById('force-viz-btn')?.click();
+
   if (k === ' ') {
     e.preventDefault();
     document.getElementById('play')?.click();
@@ -1865,7 +1904,6 @@ window.addEventListener('keydown', (e) => {
     }
   }
 
-  if (k.toLowerCase() === 'f') document.getElementById('force-viz-btn')?.click();
   if (k.toLowerCase() === 's') document.getElementById('savescene')?.click();
 });
 
@@ -1951,6 +1989,7 @@ function connectSSE() {
           title: data.title || '',
           source: data.source || 'auto'
         };
+        if (data.current_line) state.current_line = data.current_line;
         const sourceEl = document.getElementById('lyrics-source-name');
         if (sourceEl && data.source) sourceEl.textContent = data.source;
         if (data.current_line) {

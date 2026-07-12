@@ -79,8 +79,8 @@ _band_hist      = {               # Band history for graphs
 }
 
 # Spectrum smoothing coefficients
-SPEC_SMOOTH_ATTACK = 0.3   # Fast attack for transients
-SPEC_SMOOTH_DECAY = 0.85   # Slow decay for smoothness
+SPEC_SMOOTH_ATTACK = 0.15  # attaque quasi instantanée sur les transitoires
+SPEC_SMOOTH_DECAY = 0.78   # retombée plus rapide (moins de traîne)
 
 
 def get_bpm() -> float | None:

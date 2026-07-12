@@ -217,7 +217,7 @@ def _sse_broadcaster():
     last_beat_seq = None
     last_lyrics_state = None  # Memoize last lyrics state (artist, title, current_idx)
 
-    AUDIO_INTERVAL = 0.05    # ~20 FPS for audio spectrum (sufficient for visual feedback)
+    AUDIO_INTERVAL = 0.033   # ~30 FPS pour le spectre (fluidité dashboard)
     AUTO_INTERVAL = 2.0    # 0.5 FPS for auto mode (2 seconds)
     LED_INTERVAL = 0.5     # 2 FPS for LED color
     BEAT_DEBOUNCE = 0.1    # Minimum time between beat events
@@ -301,7 +301,7 @@ def _sse_broadcaster():
                 pass
 
             # Small sleep to prevent CPU spinning
-            time.sleep(0.02)
+            time.sleep(0.01)
 
         except Exception as e:
             print(f"[SSE] Broadcaster error: {e}")
@@ -427,14 +427,12 @@ class _Handler(BaseHTTPRequestHandler):
                     state["viz_mode"] = render_audio_viz.get_viz_mode()
                 except Exception:
                     state["viz_mode"] = "spectrum"
-                # Add cascade mode and force_viz
+                # Cascade courante (lyrics / audio / idle) pour l'UI
                 try:
                     import render
                     state["cascade"] = render._get_lyrics_cascade_mode()
-                    state["force_viz"] = render.get_force_viz()
                 except Exception:
                     state["cascade"] = None
-                    state["force_viz"] = False
                 # Add audio data for Phosphor UI
                 try:
                     import bpm_source
