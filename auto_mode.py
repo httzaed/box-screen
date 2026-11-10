@@ -72,7 +72,7 @@ _NIGHT_END = 9   # 9h du matin
 
 # ── État global ────────────────────────────────────────────────────────────────
 
-_lock = threading.Lock()
+_lock = threading.RLock()   # réentrant : get_state() appelle _is_override_active() sous verrou
 
 # État de l'auto-mode
 _state = {

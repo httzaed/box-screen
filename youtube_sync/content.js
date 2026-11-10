@@ -71,12 +71,23 @@ function getPlaybackPosition() {
     return null;
 }
 
+let lastSendWarning = 0;
+let syncConnected = false;
 function sendToBoxScreen(data) {
-    fetch('http://localhost:7420/api/youtube-position', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-    }).catch(err => {});
+    chrome.runtime.sendMessage({type: 'boxscreen-position', data}, response => {
+        const error = chrome.runtime.lastError?.message ||
+                      (!response?.ok ? response?.error || 'No response' : null);
+        if (error) {
+            syncConnected = false;
+            if (Date.now() - lastSendWarning > 10000) {
+                console.warn('[BoxScreen] Sync failed:', error);
+                lastSendWarning = Date.now();
+            }
+        } else if (!syncConnected) {
+            console.log('[BoxScreen] Timecode connected to localhost:7420');
+            syncConnected = true;
+        }
+    });
 }
 
 setInterval(() => {
@@ -164,6 +175,7 @@ setInterval(() => {
         artist: artist || 'Unknown',
         title: title || 'Unknown',
         position: Math.round(position * 10) / 10,
+        duration: Math.round(document.querySelector('video.html5-main-video')?.duration || 0),
         timestamp: Date.now()
     });
 

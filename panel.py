@@ -6,6 +6,20 @@ Résolution : 1920x462, JPEG, protocole LY USB bulk
 import io
 import struct
 import time
+import os
+from pathlib import Path
+
+_heartbeat_path = os.environ.get("BOX_SCREEN_HEARTBEAT")
+_last_heartbeat = 0.0
+
+
+def _frame_delivered():
+    """Report successful USB transfers, including cached frames from launcher."""
+    global _last_heartbeat
+    now = time.monotonic()
+    if _heartbeat_path and now - _last_heartbeat >= 1:
+        Path(_heartbeat_path).touch()
+        _last_heartbeat = now
 
 import usb.core
 import usb.util
@@ -33,7 +47,20 @@ _CMD_LY          = 1     # PID 0x5408
 
 
 def _open_device():
-    dev = usb.core.find(idVendor=VID, idProduct=PID)
+    # The packaged DLL is not on PATH on Windows; load it explicitly.
+    try:
+        import libusb_package
+    except ImportError:
+        backend = None
+    else:
+        backend = libusb_package.get_libusb1_backend()
+    try:
+        dev = usb.core.find(idVendor=VID, idProduct=PID, backend=backend)
+    except usb.core.NoBackendError as exc:
+        raise RuntimeError(
+            "Backend USB introuvable — installe-le avec : "
+            "python3 -m pip install libusb-package"
+        ) from exc
     if dev is None:
         raise RuntimeError("Panel introuvable — branche le câble USB")
 
@@ -183,6 +210,8 @@ def _send_frame(ep_out, ep_in, jpeg_data: bytes):
         ep_in.read(512, timeout=1000)
     except usb.core.USBTimeoutError:
         pass  # ACK timeout non fatal
+
+    _frame_delivered()
 
 
 # ── API publique ───────────────────────────────────────────────────────────

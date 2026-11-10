@@ -32,79 +32,17 @@ from modes import (
     HUD_STYLES as _HUD_STYLES,
     LED_MODES as _LED_MODES,
     LED_COLORS,
-    SCENES,
     get_mode, get_led_config
 )
 
+from led_colors import COLORS, is_led_color
+
 # Local constants
-_COLORS      = ["violet","cyan","blue","teal","green","yellow","orange","red","pink","white"]
+_COLORS      = list(COLORS)
 _CASE_MODES  = _LED_MODES
 _FAN_MODES   = _LED_MODES
-_FLOAT_PARAMS= {"case_speed","fan_speed","case_length","brightness","case_decay"}
+_FLOAT_PARAMS= {"keyboard_min_brightness","rhythm_sensitivity","rhythm_intensity","rhythm_release","case_speed","fan_speed","keyboard_speed","case_length","brightness","case_decay"}
 _VIZ_MODES   = ["ambience", "spectrum", "waveform"]
-_SCENES_FILE = Path(__file__).parent / "scenes.json"
-
-
-# ── Scene Management (uses scenes from modes.py) ───────────────────────────────────
-def _load_scenes():
-    """Load scenes from scenes.json or use defaults from modes.py."""
-    try:
-        if _SCENES_FILE.exists():
-            return json.loads(_SCENES_FILE.read_text())
-    except Exception as e:
-        print(f"[SCENES] Error loading: {e}")
-
-    # Return default scenes from modes.py
-    return {k: {"mode": v.mode, "led": v.led.__dict__} for k, v in SCENES.items()}
-
-
-def _save_scenes(scenes):
-    """Save scenes to scenes.json."""
-    try:
-        _SCENES_FILE.write_text(json.dumps(scenes, indent=2))
-    except Exception as e:
-        print(f"[SCENES] Error saving: {e}")
-
-
-def _apply_scene(scene_name):
-    """Apply a scene by setting mode, HUD, and LED config."""
-    try:
-        scenes = _load_scenes()
-        if scene_name not in scenes:
-            print(f"[SCENE] Scene not found: {scene_name}")
-            return False
-
-        scene = scenes[scene_name]
-
-        # Apply mode
-        if "mode" in scene and _switch:
-            _do_mode(scene["mode"])
-
-        # Apply HUD
-        if "hud" in scene and _switch_hud:
-            _do_hud(scene["hud"])
-
-        # Apply LED settings
-        if "led" in scene and _set_led:
-            led = scene["led"]
-            for key, value in led.items():
-                _set_led(key, value)
-
-        return True
-    except Exception as e:
-        print(f"[SCENE] Error applying scene: {e}")
-        return False
-
-
-def _get_scenes_list():
-    """Get list of available scene names safely."""
-    try:
-        scenes = _load_scenes()
-        return list(scenes.keys())
-    except Exception:
-        return ["rave", "focus", "chill", "stealth", "gaming", "movie"]
-
-
 def _get_auto_state():
     """Get auto mode state with scoring info."""
     try:
@@ -169,21 +107,61 @@ def _sse_get_audio_data():
 
         # Convert numpy arrays to lists for JSON serialization
         return {
-            'spectrum': spectrum.tolist() if spectrum is not None else [],
-            'waveform': waveform.tolist() if waveform is not None else [],
+            'spectrum': [float(v) for v in spectrum] if spectrum is not None else [],
+            'waveform': [float(v) for v in waveform] if waveform is not None else [],
             'bands': {
                 'bass': float(bands_list[0]) if bands_list else 0.0,
                 'mid': float(bands_list[1]) if len(bands_list) > 1 else 0.0,
                 'treble': float(bands_list[2]) if len(bands_list) > 2 else 0.0
             },
-            'band_history': band_history.tolist() if band_history is not None else [],
+            'band_history': {k: [float(v) for v in vals] for k, vals in band_history.items()} if band_history else {},
             'bpm': bpm_source.get_bpm() or 0,
             'level': float(bpm_source.get_level()) if bpm_source.get_level() is not None else 0.0,
+            'level_l': bpm_source.get_stereo_levels()[0],
+            'level_r': bpm_source.get_stereo_levels()[1],
             'beat_ts': beat_ts,
             'beat_seq': beat_seq
         }
     except Exception as e:
         return {'error': str(e)}
+
+
+def _lyrics_live_state():
+    """Return a fresh, small lyrics snapshot for both SSE and HTTP clients."""
+    import lyrics_source
+    raw = lyrics_source.get_state()
+    if not raw:
+        return {"active": False, "artist": "", "title": "", "current_idx": -1,
+                "total_lines": 0, "synced": False, "loading": False,
+                "current_line": "", "previous_line": "", "next_line": "",
+                "source": "auto", "position": None, "lines": []}
+    lines = raw.get("lines") or []
+    idx = raw.get("current_idx", -1)
+    if not isinstance(idx, int):
+        idx = -1
+
+    def text_at(index):
+        if not 0 <= index < len(lines):
+            return ""
+        line = lines[index]
+        if isinstance(line, (list, tuple)) and len(line) >= 2:
+            return str(line[1] or "")
+        if isinstance(line, dict):
+            return str(line.get("text") or "")
+        return line if isinstance(line, str) else ""
+
+    return {"active": True, "artist": raw.get("artist", ""),
+            "title": raw.get("title", ""), "current_idx": idx,
+            "total_lines": len(lines), "synced": bool(raw.get("has_sync")),
+            "loading": bool(raw.get("loading")), "source": raw.get("source") or "auto",
+            "position": raw.get("position"), "raw_position": raw.get("raw_position"),
+            "offset": raw.get("offset", 0), "clock_source": raw.get("clock_source", "estimated"),
+            "current_line": text_at(idx),
+            "previous_line": text_at(idx - 1), "next_line": text_at(idx + 1),
+            "before": [text_at(idx - 3), text_at(idx - 2), text_at(idx - 1)],
+            "after": [text_at(idx + 1), text_at(idx + 2), text_at(idx + 3)],
+            "duration": lyrics_source.get_duration(),
+            "lines": lines[:5]}
 
 
 def _sse_get_led_color():
@@ -215,7 +193,7 @@ def _sse_broadcaster():
     last_auto_time = 0
     last_led_time = 0
     last_beat_seq = None
-    last_lyrics_state = None  # Memoize last lyrics state (artist, title, current_idx)
+    last_lyrics_time = 0
 
     AUDIO_INTERVAL = 0.033   # ~30 FPS pour le spectre (fluidité dashboard)
     AUTO_INTERVAL = 2.0    # 0.5 FPS for auto mode (2 seconds)
@@ -259,46 +237,13 @@ def _sse_broadcaster():
                 _sse_broadcast('led_colors', led_data)
                 last_led_time = now
 
-            # Lyrics position (on change only, tracked via state)
-            try:
-                import lyrics_source
-                lyrics_state = lyrics_source.get_state()
-                if lyrics_state:
-                    lines = lyrics_state.get('lines', [])
-                    current_idx = lyrics_state.get('current_idx', 0)
-                    # Extraire la ligne courante uniquement (economie bande passante)
-                    current_line = ''
-                    if lines and 0 <= current_idx < len(lines):
-                        line = lines[current_idx]
-                        # Format selon la structure (synced: [time, text], non-synced: text direct)
-                        if isinstance(line, list) and len(line) >= 2:
-                            current_line = line[1]  # Format [time, text]
-                        elif isinstance(line, str):
-                            current_line = line
-                        elif isinstance(line, dict):
-                            current_line = line.get('text', '')
-
-                    # Build current state key (artist, title, current_idx) - exclude 'loading' from comparison
-                    current_state_key = (
-                        lyrics_state.get('artist', ''),
-                        lyrics_state.get('title', ''),
-                        current_idx
-                    )
-
-                    # Only broadcast if meaningful state changed
-                    if current_state_key != last_lyrics_state:
-                        _sse_broadcast('lyrics_position', {
-                            'artist': lyrics_state.get('artist', ''),
-                            'title': lyrics_state.get('title', ''),
-                            'current_idx': current_idx,
-                            'total_lines': len(lines),
-                            'synced': lyrics_state.get('has_sync', False),
-                            'loading': lyrics_state.get('loading', False),
-                            'current_line': current_line
-                        })
-                        last_lyrics_state = current_state_key
-            except Exception:
-                pass
+            # A periodic snapshot also initializes late subscribers and clears stale lyrics.
+            if now - last_lyrics_time >= 0.05:
+                try:
+                    _sse_broadcast('lyrics_position', _lyrics_live_state())
+                except Exception:
+                    pass
+                last_lyrics_time = now
 
             # Small sleep to prevent CPU spinning
             time.sleep(0.01)
@@ -406,7 +351,14 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             p=urllib.parse.urlparse(self.path).path
             if p in ("/","/index.html"):
-                self._send(200,"text/html; charset=utf-8",_HTML)
+                self._send(200,"text/html; charset=utf-8",
+                           (Path(__file__).parent / "phosphor_ui.html").read_text(encoding="utf-8"))
+            elif p=="/api/health":
+                import os
+                import led_fans
+                healthy = time.monotonic() - led_fans.last_progress < 30
+                self._send(200 if healthy else 503, "application/json",
+                           json.dumps({"service": "phosphor", "pid": os.getpid(), "ok": healthy}).encode())
             elif p=="/api/events":
                 # SSE endpoint for real-time state updates
                 self._handle_sse()
@@ -416,11 +368,6 @@ class _Handler(BaseHTTPRequestHandler):
                 try:
                     import led_fans as lf; state["led"]=lf.get_cfg()
                 except Exception: state["led"]={}
-                # Add scenes list (with error handling)
-                try:
-                    state["scenes"] = _get_scenes_list()
-                except Exception:
-                    state["scenes"] = ["rave", "focus", "chill", "stealth", "gaming", "movie"]
                 # Add viz mode
                 try:
                     import render_audio_viz
@@ -449,8 +396,8 @@ class _Handler(BaseHTTPRequestHandler):
                     lyrics_state = lyrics_source.get_state()
                     if lyrics_state:
                         state["track"] = f"{lyrics_state.get('artist', '')} - {lyrics_state.get('title', '')}"
-                        state["position"] = lyrics_state.get('position', 0) or 0
-                        state["duration"] = 0  # Not available from lyrics_source
+                        state["position"] = lyrics_state.get('raw_position') or lyrics_state.get('position', 0) or 0
+                        state["duration"] = lyrics_source.get_duration()
                         state["playing"] = not lyrics_state.get('loading', False)
                     else:
                         state["track"] = None
@@ -463,13 +410,6 @@ class _Handler(BaseHTTPRequestHandler):
                     state["duration"] = 0
                     state["playing"] = False
                 self._send(200,"application/json",json.dumps(state))
-            elif p=="/api/scenes":
-                try:
-                    scenes=_load_scenes()
-                    self._send(200,"application/json",json.dumps(scenes))
-                except Exception as e:
-                    print(f"[API] Error getting scenes: {e}")
-                    self._send(200,"application/json",json.dumps(_load_scenes()))
             elif p=="/api/audio/data":
                 # Get real-time audio data for visualization
                 try:
@@ -488,7 +428,7 @@ class _Handler(BaseHTTPRequestHandler):
                         "beat_ts": bpm_source.get_beat_event()[0],
                         "beat_seq": bpm_source.get_beat_event()[1]
                     }
-                    self._send(200,"application/json",json.dumps(audio_data))
+                    self._send(200,"application/json",json.dumps(audio_data, default=float))
                 except Exception as e:
                     print(f"[API] Error getting audio data: {e}")
                     self._send(500,"application/json",json.dumps({"error": str(e)}))
@@ -499,21 +439,7 @@ class _Handler(BaseHTTPRequestHandler):
             elif p=="/api/lyrics/state":
                 # Get current lyrics position and state
                 try:
-                    import lyrics_source
-                    lyrics_state = lyrics_source.get_state()
-                    if lyrics_state:
-                        state = {
-                            'artist': lyrics_state.get('artist', ''),
-                            'title': lyrics_state.get('title', ''),
-                            'current_idx': lyrics_state.get('current_idx', 0),
-                            'total_lines': len(lyrics_state.get('lines', [])),
-                            'synced': lyrics_state.get('has_sync', False),
-                            'loading': lyrics_state.get('loading', False),
-                            'lines': lyrics_state.get('lines', [])[:5]  # Preview first 5 lines
-                        }
-                        self._send(200,"application/json",json.dumps(state))
-                    else:
-                        self._send(200,"application/json",json.dumps({"active": False}))
+                    self._send(200,"application/json",json.dumps(_lyrics_live_state()))
                 except Exception as e:
                     print(f"[API] Error getting lyrics state: {e}")
                     self._send(500,"application/json",json.dumps({"error": str(e)}))
@@ -533,7 +459,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
-            parts=[x for x in urllib.parse.urlparse(self.path).path.split("/") if x]
+            parts=[urllib.parse.unquote(x) for x in urllib.parse.urlparse(self.path).path.split("/") if x]
             if len(parts)>=2 and parts[0]=="api":
                 k=parts[1]
                 if k=="mode" and len(parts)>=3 and _switch:
@@ -547,10 +473,6 @@ class _Handler(BaseHTTPRequestHandler):
                 if k=="led" and len(parts)==4:
                     _do_led(parts[2],parts[3])
                     self._send(200,"application/json",'{"ok":true}')
-                    return
-                if k=="scene" and len(parts)>=3:
-                    result = _do_scene(parts[2])
-                    self._send(200,"application/json",json.dumps(result))
                     return
                 if k=="viz" and len(parts)>=3:
                     _do_viz(parts[2])
@@ -743,7 +665,7 @@ def _do_led_fan_mode(mode):
 
 def _do_led_fan_color(color):
     try:
-        if color in _COLORS:
+        if is_led_color(color):
             _do_led('fan_color', color)
     except Exception as e:
         print(f"[API] LED fan color error: {e}")
@@ -760,65 +682,8 @@ def _do_led_case_mode(mode):
 
 def _do_led_case_color(color):
     """Adapter for LED case color setting."""
-    if color in _COLORS:
+    if is_led_color(color):
         _do_led('case_color', color)
-
-
-def _do_scene_save(scene_name):
-    """Save current state as a named scene."""
-    try:
-        state = _get_state() if _get_state else {}
-        try:
-            import led_fans as lf
-            led_cfg = lf.get_cfg()
-        except Exception:
-            led_cfg = {}
-
-        scenes = _load_scenes()
-        scenes[scene_name] = {
-            'mode': state.get('mode'),
-            'hud': state.get('hud'),
-            'led': led_cfg
-        }
-        _save_scenes(scenes)
-        return {'ok': True}
-    except Exception as e:
-        return {'ok': False, 'error': str(e)}
-
-
-def _do_scene(scene_name):
-    """Handle scene API requests. Returns {'ok': True, 'scene_id': id} for save, {'ok': True} for load."""
-    try:
-        if scene_name == "save":
-            # Save current state as a new scene
-            state = _get_state() if _get_state else {}
-            try:
-                import led_fans as lf
-                led_cfg = lf.get_cfg()
-            except Exception:
-                led_cfg = {}
-
-            scene_id = f"user_{len(_get_scenes_list()) + 1}"
-            scenes = _load_scenes()
-            scenes[scene_id] = {
-                "mode": state.get("mode"),
-                "hud": state.get("hud"),
-                "led": led_cfg
-            }
-            _save_scenes(scenes)
-            print(f"[SCENE] Saved current state as {scene_id}")
-            return {'ok': True, 'scene_id': scene_id}
-        else:
-            # Load and apply scene
-            if _apply_scene(scene_name):
-                print(f"[SCENE] Applied scene: {scene_name}")
-                return {'ok': True}
-            else:
-                print(f"[SCENE] Scene not found: {scene_name}")
-                return {'ok': False, 'error': 'Scene not found'}
-    except Exception as e:
-        print(f"[SCENE] Error: {e}")
-        return {'ok': False, 'error': str(e)}
 
 
 def _do_viz(mode):
@@ -869,7 +734,8 @@ def _do_youtube_position(self):
                     video_id,
                     data.get('artist', ''),
                     data.get('title', ''),
-                    position
+                    position,
+                    data.get('duration')
                 )
             except ImportError:
                 pass  # lyrics_source not available
@@ -1067,17 +933,25 @@ def _apply_led(lf,zone,val):
         # Normalize zone name first
         zone = _normalize_led_zone(zone)
 
-        if zone=="case_mode" and val in _CASE_MODES:
+        if zone == "rhythm_mode" and val in ("legacy", "impacts", "split"):
+            lf.set_cfg(rhythm_mode=val)
+        elif zone in ("fan_rhythm", "case_rhythm", "keyboard_rhythm") and val in ("kick", "snare", "high"):
+            lf.set_cfg(**{zone: val})
+        elif zone == "keyboard_mode" and val in ("off", "static", "wave", "beat_pulse", "sync_fans"):
+            lf.set_cfg(keyboard_mode=val)
+        elif zone in ("keyboard_color", "keyboard_color2") and is_led_color(val):
+            lf.set_cfg(**{zone: val})
+        elif zone=="case_mode" and val in _CASE_MODES:
             lf.set_cfg(case_mode=val)
         elif zone=="fan_mode" and val in _FAN_MODES:
             lf.set_cfg(fan_mode=val)
-        elif zone=="case_color" and val in _COLORS:
+        elif zone=="case_color" and is_led_color(val):
             lf.set_cfg(case_color=val)
-        elif zone=="case_color2" and val in _COLORS:
+        elif zone=="case_color2" and is_led_color(val):
             lf.set_cfg(case_color2=val)
-        elif zone=="fan_color" and val in _COLORS:
+        elif zone=="fan_color" and is_led_color(val):
             lf.set_cfg(fan_color=val)
-        elif zone=="fan_color2" and val in _COLORS:
+        elif zone=="fan_color2" and is_led_color(val):
             lf.set_cfg(fan_color2=val)
         elif zone in _FLOAT_PARAMS:
             try:
@@ -1150,7 +1024,7 @@ def start(switch_fn=None,switch_hud_fn=None,get_state_fn=None,set_led_fn=None,au
     try:
         # Start HTTPServer
         print(f"[Dashboard] Starting HTTPServer on port {PORT}...")
-        http_server = ThreadingHTTPServer(("127.0.0.1", PORT), _Handler)
+        http_server = ThreadingHTTPServer(("0.0.0.0", PORT), _Handler)
         threading.Thread(target=http_server.serve_forever, daemon=True, name='http_server').start()
         print(f"[Dashboard] http://localhost:{PORT} (HTTPServer mode)")
 

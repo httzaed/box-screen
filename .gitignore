@@ -1,4 +1,6 @@
 # Python
+*.log
+.phosphor-deps/
 __pycache__/
 *.pyc
 *.pyo

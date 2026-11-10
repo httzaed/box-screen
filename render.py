@@ -29,17 +29,27 @@ _force_viz_lock = threading.Lock()
 # ── Fond image pour les lyrics (lines.jpg) ──────────────────────────────────
 _LYRICS_BG_PATH = pathlib.Path(__file__).parent / "lines.jpg"
 _lyrics_bg_cache: "Image.Image | None" = None
+_lyrics_bg_retry_at = 0.0
+_lyrics_bg_error_logged = False
 
 def _get_lyrics_bg() -> "Image.Image | None":
     """Charge lines.jpg, recadré en cover sur WIDTH×HEIGHT (RGBA), mis en cache."""
-    global _lyrics_bg_cache
+    global _lyrics_bg_cache, _lyrics_bg_retry_at, _lyrics_bg_error_logged
     if _lyrics_bg_cache is not None:
         return _lyrics_bg_cache
-    try:
-        src = Image.open(_LYRICS_BG_PATH).convert("RGBA")
-    except Exception as e:
-        print(f"[RENDER] lines.jpg introuvable: {e}")
+    if time.monotonic() < _lyrics_bg_retry_at:
         return None
+    try:
+        with Image.open(_LYRICS_BG_PATH) as source:
+            src = source.convert("RGBA")
+    except Exception as e:
+        if not _lyrics_bg_error_logged:
+            print(f"[RENDER] Fond lyrics indisponible, utilisation du fond animé: {e}")
+            _lyrics_bg_error_logged = True
+        # Permet d'ajouter le fond à chaud sans tenter une lecture à chaque frame.
+        _lyrics_bg_retry_at = time.monotonic() + 30.0
+        return None
+    _lyrics_bg_error_logged = False
     # Cover: redimensionne en gardant le ratio puis recadre au centre
     sw, sh = src.size
     scale = max(WIDTH / sw, HEIGHT / sh)
@@ -137,6 +147,10 @@ def _font(size):
         # Windows (user fonts)
         _home / "AppData/Local/Microsoft/Windows/Fonts/Montserrat-SemiBold.ttf",
         _home / "AppData/Local/Microsoft/Windows/Fonts/Montserrat-Medium.ttf",
+        _home / "AppData/Local/Microsoft/Windows/Fonts/Montserrat-VariableFont_wght.ttf",
+        pathlib.Path("C:/Windows/Fonts/Montserrat-SemiBold.ttf"),
+        pathlib.Path("C:/Windows/Fonts/Montserrat-Medium.ttf"),
+        pathlib.Path("C:/Windows/Fonts/Montserrat-VariableFont_wght.ttf"),
         pathlib.Path("C:/Windows/Fonts/arialbd.ttf"),
         # Linux
         pathlib.Path("/usr/share/fonts/truetype/montserrat/Montserrat-SemiBold.ttf"),
@@ -147,7 +161,11 @@ def _font(size):
     ]
     for path in candidates:
         try:
-            return ImageFont.truetype(str(path), size)
+            font = ImageFont.truetype(str(path), size)
+            if "VariableFont_wght" in path.name:
+                # La variante par défaut peut être Thin : choisir SemiBold.
+                font.set_variation_by_axes([600])
+            return font
         except (OSError, TypeError):
             pass
     return ImageFont.load_default()
@@ -275,7 +293,6 @@ def _get_frame_key() -> str:
         state = _ls.get_state()
         if state and state.get("lines"):
             idx = state.get("current_idx", 0)
-            line = state["lines"][idx][1] if idx < len(state["lines"]) else ""
             # Ajoute la position (tronquée à 2 secondes près) pour éviter le cache statique
             pos = state.get("position", 0)
             pos_bucket = int(pos // 2) if pos else 0
@@ -570,10 +587,6 @@ def _draw_lyrics_hud(img: Image.Image) -> Image.Image:
     except ImportError:
         state = None
 
-    # ── SYNC OFFSET (ajuste ici si les lyrics sont en avance ou retard) ───────────
-    # positif = retarder les lyrics, négatif = les avancer
-    SYNC_OFFSET = 0.5  # secondes (réduit - 1.5 était trop pour certaines chansons)
-
     # ── Art animé - toujours visible, plus intense quand blank ─────────────────────
     time_now = time.monotonic()
     is_blank = state is None or not state["lines"]
@@ -662,41 +675,12 @@ def _draw_lyrics_hud(img: Image.Image) -> Image.Image:
         # DEBUG - toutes les 10s seulement
         now = time.monotonic()
         if now - _draw_lyrics_hud._last_debug_print >= 10:
-            print(f"[RENDER] lyrics: pos={position:.1f}s, idx={idx}, lines={len(lines)}, has_sync={has_sync}")
+            print(f"[RENDER] lyrics: pos={position}s, idx={idx}, lines={len(lines)}, has_sync={has_sync}")
             _draw_lyrics_hud._last_debug_print = now
 
-        # Si on a position exacte + sync, utilise-la pour trouver la bonne ligne
-        if has_sync and position is not None:
-            # Offset personnalisé depuis le cache, ou fallback
-            try:
-                import lyrics_source as _ls
-                custom_offset = _ls.get_song_offset(artist, title)
-                sync_pos = position + (custom_offset if custom_offset is not None else SYNC_OFFSET)
-            except:
-                sync_pos = position + SYNC_OFFSET
-
-            # Trouve la ligne exacte basée sur le timestamp ajusté
-            best_i = 0
-            for i, (ts, _) in enumerate(lines):
-                if ts is not None and ts <= sync_pos:
-                    best_i = i
-                elif ts is not None and ts > sync_pos:
-                    break
-            display_idx = best_i
-
-            # DEBUG - utilise le même timer
-            if now - _draw_lyrics_hud._last_debug_print >= 10:
-                print(f"[RENDER] sync: sync_pos={sync_pos:.1f}s, display_idx={display_idx}, line={lines[display_idx][1] if display_idx < len(lines) else 'N/A'}")
-
-        # Fallback pour plain lyrics (pas de timestamps) - avance toutes les 4 secondes
-        elif not has_sync and position is not None and len(lines) > 0:
-            # Estime: ~4-5 secondes par ligne en moyenne
-            plain_idx = int(position / 4.5) % len(lines)
-            display_idx = plain_idx
-
-            # DEBUG - utilise le même timer
-            if now - _draw_lyrics_hud._last_debug_print >= 10:
-                print(f"[RENDER] plain mode: pos={position:.1f}s, display_idx={display_idx}/{len(lines)}")
+        # lyrics_source already selects the line from the corrected playback clock.
+        # Use that index verbatim, just like Phosphor; applying an offset here
+        # a second time makes the physical display diverge from the browser.
 
         # ── Meta en haut (subtil) ─────────────────────────────────────────────────
         meta = f"{artist}" if artist else title
@@ -821,7 +805,7 @@ def _draw_lyrics_hud(img: Image.Image) -> Image.Image:
             first_ts = lines[0][0] if lines[0][0] is not None else 0
             last_ts = lines[-1][0] if lines[-1][0] is not None else 0
             if position and last_ts > first_ts:
-                sync_pos = position + SYNC_OFFSET
+                sync_pos = position
                 prog = max(0, min(1, (sync_pos - first_ts) / (last_ts - first_ts)))
                 bar_w = 200
                 bx = WIDTH//2 - bar_w//2
@@ -844,13 +828,22 @@ def _get_lyrics_cascade_mode() -> str:
         import lyrics_source as _ls
         import bpm_source
         state = _ls.get_state()
-        if state is None:
-            return "idle"
-
-        # Détection pause/silence : si niveau audio < 0.01 -> idle (ASCII)
+        # Attendre 15 secondes de silence continu avant de réafficher l'ASCII.
+        import time
         audio_level = bpm_source.get_level()
         if audio_level < 0.01:
-            return "idle"
+            now = time.monotonic()
+            silence_since = getattr(_get_lyrics_cascade_mode, '_silence_since', None)
+            if silence_since is None:
+                silence_since = now
+                _get_lyrics_cascade_mode._silence_since = now
+            if now - silence_since >= 15.0:
+                return "idle"
+        else:
+            _get_lyrics_cascade_mode._silence_since = None
+
+        if state is None:
+            return "audio"
 
         lines = state.get("lines", [])
         force = get_force_viz()

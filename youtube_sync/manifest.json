@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Box Screen Lyrics Sync",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Send YouTube video timecode to Box Screen for lyrics sync",
   "permissions": ["activeTab"],
   "host_permissions": ["http://localhost:7420/*"],
+  "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
       "matches": ["*://www.youtube.com/*", "*://music.youtube.com/*"],

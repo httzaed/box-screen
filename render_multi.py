@@ -20,6 +20,8 @@ import time
 from collections import deque
 from datetime import datetime
 
+from led_colors import resolve_color
+
 import psutil
 from PIL import Image, ImageDraw, ImageFont
 
@@ -63,7 +65,7 @@ def _led_accent_color() -> tuple:
     """Lit case_color depuis led_config.json → RGB. Fallback violet."""
     try:
         cfg = json.loads((pathlib.Path(__file__).parent / "led_config.json").read_text())
-        return LED_COLORS.get(cfg.get("case_color", "violet"), (180, 40, 255))
+        return resolve_color(cfg.get("case_color", "violet"))
     except Exception:
         return (180, 40, 255)
 

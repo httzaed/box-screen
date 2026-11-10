@@ -22,6 +22,26 @@ import time
 import re
 import collections
 import numpy as np
+from rhythm_dsp import RhythmDetector, event_level
+
+_rhythm_events = {}
+_rhythm_sensitivity = 1.0
+_timing = {}
+
+def configure_rhythm(sensitivity):
+    global _rhythm_sensitivity
+    _rhythm_sensitivity = min(3.0, max(0.3, float(sensitivity)))
+
+def get_rhythm_levels(release=0.09):
+    with _lock:
+        events = dict(_rhythm_events)
+    now = time.monotonic()
+    return {name: event_level(event, now, release) for name, event in events.items()}
+
+def get_timing():
+    with _lock:
+        return dict(_timing)
+
 
 # ── Config ────────────────────────────────────────────────────────────────────
 DEVICE_IDX   = 0         # fallback mic si loopback indisponible
@@ -34,7 +54,7 @@ MID_LO,  MID_HI    = 250, 2000  # snare, voix
 HI_LO,   HI_HI     = 2000, 8000 # cymbales, hi-hat
 
 # Envelope follower (en "blocs" à ~86 blocs/s)
-ATTACK_COEF  = 0.95    # fast attack  (~12ms)
+ATTACK_COEF  = 0.20    # 80% of the new kick in one audio block (~12ms)
 DECAY_COEF   = 0.88    # slow decay   (~80ms)
 
 # Normalisation adaptative
@@ -98,6 +118,37 @@ def get_level() -> float:
         return _level
 
 
+_stereo_rms = (0.0, 0.0, 0.0)   # (rms gauche, rms droite, horodatage monotonic)
+
+
+def _note_stereo(frames):
+    """Mémorise le RMS par canal d'un bloc capturé (frames x canaux, ou mono)."""
+    global _stereo_rms
+    try:
+        if frames.ndim > 1 and frames.shape[1] > 1:
+            left = float(np.sqrt(np.mean(np.square(frames[:, 0]))))
+            right = float(np.sqrt(np.mean(np.square(frames[:, 1]))))
+        else:
+            left = right = float(np.sqrt(np.mean(np.square(frames))))
+        _stereo_rms = (left, right, time.monotonic())
+    except Exception:
+        pass
+
+
+def get_stereo_levels() -> tuple:
+    """Niveaux gauche / droite 0-1 (échelle dB, -60 dBFS → 0, -6 dBFS → 1)."""
+    left, right, ts = _stereo_rms
+    if time.monotonic() - ts > 0.5:
+        return 0.0, 0.0
+
+    def scale(rms):
+        if rms <= 1e-6:
+            return 0.0
+        return max(0.0, min(1.0, (20.0 * float(np.log10(rms)) + 60.0) / 54.0))
+
+    return scale(left), scale(right)
+
+
 def get_beat_event() -> tuple:
     with _lock:
         return _last_beat_ts, _beat_seq
@@ -150,6 +201,7 @@ def _get_audio_data() -> dict:
 # ── Lookup titre -> BPM ───────────────────────────────────────────────────────
 # Blacklist des sources audio à ignorer
 _BLACKLISTED_SOURCES = {
+    "valorant",
     "twitch",
     "www.twitch.tv",
     "twitch.tv",
@@ -299,6 +351,29 @@ def _audio_bpm(ring, buf_size):
 
 
 # ── Capture audio (PyAudioWPatch loopback ou sounddevice mic) ─────────────────
+class _CaptureResampler:
+    """Conversion continue avec NumPy, en blocs DSP de taille constante."""
+
+    def __init__(self, rate):
+        self.step = rate / CAPTURE_RATE
+        self.position = 0.0
+        self.pending = np.empty(0, dtype=np.float32)
+
+    def push(self, samples):
+        self.pending = np.concatenate((self.pending, samples))
+        offsets = np.arange(BLOCK_SIZE) * self.step
+        while self.position + offsets[-1] <= len(self.pending) - 1:
+            positions = self.position + offsets
+            block = np.interp(positions, np.arange(len(self.pending)),
+                              self.pending).astype(np.float32)
+            self.position += BLOCK_SIZE * self.step
+            # Garder l'échantillon de gauche pour interpoler le bloc suivant.
+            consumed = min(int(self.position), len(self.pending))
+            self.pending = self.pending[consumed:]
+            self.position -= consumed
+            yield block
+
+
 def _open_stream(queue_out, running_flag):
     """
     Essaie PyAudioWPatch (WASAPI loopback), sinon sounddevice mic.
@@ -312,7 +387,7 @@ def _open_stream(queue_out, running_flag):
         # Collecte tous les loopback devices (exclut Discord, etc.)
         loopbacks = []
         # BLACKLIST: apps à exclure (noms de loopback devices)
-        EXCLUDE = ["discord", "vb-cable", "wave link"]  # Discord, VB-Cable virtuels, etc.
+        EXCLUDE = ["discord", "vb-cable", "wave link", "valorant"]  # Apps et périphériques virtuels à ignorer.
         for i in range(pa.get_host_api_info_by_index(wasapi_idx)["deviceCount"]):
             dev = pa.get_device_info_by_host_api_device_index(wasapi_idx, i)
             dev_name_lower = dev.get("name", "").lower()
@@ -343,18 +418,19 @@ def _open_stream(queue_out, running_flag):
         ch     = loopback_dev["maxInputChannels"]
         dev_idx = loopback_dev["index"]
         print(f"[BPM] WASAPI loopback: {loopback_dev['name']} @ {rate}Hz")
+        resampler = _CaptureResampler(rate)
 
         def _paw_cb(in_data, frame_count, time_info, status):
             if not running_flag[0]:
                 return (None, pyaudio.paComplete)
             raw = np.frombuffer(in_data, dtype=np.float32)
             if ch > 1:
-                raw = raw.reshape(-1, ch).mean(axis=1)
-            # Resample vers CAPTURE_RATE si besoin
-            if rate != CAPTURE_RATE:
-                import librosa
-                raw = librosa.resample(raw, orig_sr=rate, target_sr=CAPTURE_RATE)
-            queue_out.append(raw)
+                raw = raw.reshape(-1, ch)
+                _note_stereo(raw)
+                raw = raw.mean(axis=1)
+            else:
+                _note_stereo(raw)
+            queue_out.extend((block, time.monotonic()) for block in resampler.push(raw))
             return (None, pyaudio.paContinue)
 
         stream = pa.open(
@@ -385,8 +461,9 @@ def _open_stream(queue_out, running_flag):
         print(f"[BPM] device [{DEVICE_IDX}]: {sd.query_devices(DEVICE_IDX)['name']}")
 
         def _sd_cb(indata, frames, t, status):
+            _note_stereo(indata)
             mono = indata.mean(axis=1) if indata.ndim > 1 else indata[:, 0]
-            queue_out.append(mono.astype(np.float32))
+            queue_out.append((mono.astype(np.float32), time.monotonic()))
 
         with sd.InputStream(device=DEVICE_IDX, channels=n_ch,
                             samplerate=CAPTURE_RATE, blocksize=BLOCK_SIZE,
@@ -402,6 +479,14 @@ def _open_stream(queue_out, running_flag):
 def _detector_loop():
     global _current_bpm, _last_bpm_t, _level, _beat_seq, _last_beat_ts, _running
 
+    try:
+        import librosa
+        audio_bpm_available = True
+    except ImportError:
+        audio_bpm_available = False
+        print("[BPM] librosa absent : estimation audio du BPM désactivée ; "
+              "capture et effets audio actifs. Installer avec python3 -m pip install librosa")
+
     # Buffers DSP
     env_bass   = 0.0
     peak_hist  = collections.deque(maxlen=NORM_HISTORY)
@@ -413,9 +498,11 @@ def _detector_loop():
     # Buffer librosa (BPM)
     buf_size   = int(CHUNK_SEC * CAPTURE_RATE)
     ring       = collections.deque(maxlen=buf_size)
+    ring_lock = threading.Lock()
 
     # Queue audio inter-thread
-    audio_queue = collections.deque(maxlen=200)
+    # Keep only recent audio if processing briefly falls behind (~46ms).
+    audio_queue = collections.deque(maxlen=1)
     running_flag = [True]
 
     # Titre / BPM
@@ -436,12 +523,20 @@ def _detector_loop():
     )
     cap_thread.start()
 
+    from rhythm_dsp import RhythmDetector
+    rhythm = RhythmDetector(CAPTURE_RATE)
+
     # Boucle DSP — consomme la queue audio
     def _process_block(mono):
         nonlocal env_bass, prev_mag, last_onset
         global _level, _beat_seq, _last_beat_ts, _viz_fft_mag
 
-        ring.extend(mono)
+        with ring_lock:
+            ring.extend(mono)
+
+        events = rhythm.process(mono, time.monotonic(), _rhythm_sensitivity)
+        with _lock:
+            _rhythm_events.update(events)
 
         n    = len(mono)
         if n < 2:
@@ -460,7 +555,7 @@ def _detector_loop():
         if e_bass > env_bass:
             env_bass = ATTACK_COEF * env_bass + (1 - ATTACK_COEF) * e_bass
         else:
-            env_bass = DECAY_COEF  * env_bass
+            env_bass = DECAY_COEF * env_bass + (1 - DECAY_COEF) * e_bass
 
         peak_hist.append(env_bass)
         if len(peak_hist) >= 10:
@@ -551,7 +646,7 @@ def _detector_loop():
 
         if prev_mag is not None and len(mag) == len(prev_mag):
             # Flux spectral sur la bande kick uniquement (60-100 Hz)
-            freqs     = np.fft.rfftfreq(n * 2 - 2, 1.0 / CAPTURE_RATE)
+            freqs     = np.fft.rfftfreq(n, 1.0 / CAPTURE_RATE)
             kick_mask = (freqs >= 60) & (freqs <= 100)
             diff      = mag - prev_mag
             diff_kick = diff[kick_mask[:len(diff)]]
@@ -567,12 +662,33 @@ def _detector_loop():
                         _last_beat_ts = now
         prev_mag = mag  # noqa: F841 — fermeture
 
+    def _dsp_worker():
+        global _running
+        try:
+            while _running:
+                try:
+                    block = audio_queue.popleft()
+                except IndexError:
+                    time.sleep(0.002)
+                    continue
+                started = time.monotonic()
+                block, delivered = block
+                _process_block(block)
+                with _lock:
+                    _timing.update(queue_ms=(started-delivered)*1000,
+                                   dsp_ms=(time.monotonic()-started)*1000,
+                                   block_estimate_ms=BLOCK_SIZE/CAPTURE_RATE*1000)
+        except Exception as error:
+            print(f"[BPM] DSP error: {error}")
+            _running = False
+
+    # Network lookups and tempo analysis must never block real-time beats.
+    dsp_thread = threading.Thread(target=_dsp_worker, daemon=True)
+    dsp_thread.start()
+
     last_bpm_update = 0.0
     try:
         while _running:
-            # Consomme tous les blocs disponibles
-            while audio_queue:
-                _process_block(audio_queue.popleft())
             time.sleep(0.005)
 
             now = time.monotonic()
@@ -601,7 +717,9 @@ def _detector_loop():
                     _last_bpm_t  = now
                 continue
 
-            raw = _audio_bpm(ring, buf_size)
+            with ring_lock:
+                bpm_samples = list(ring)
+            raw = _audio_bpm(bpm_samples, buf_size) if audio_bpm_available else None
             if raw is None:
                 continue
             ema_bpm = raw if ema_bpm is None else ema_bpm * (1-EMA_ALPHA) + raw * EMA_ALPHA

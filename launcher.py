@@ -10,6 +10,13 @@ HUD styles (rendu HUD)  : full, terminal, clock, split, tiles, matrix
 
   --auto  : Mode auto-intelligent (détecte vidéo/musique/lyrics et adapte l'affichage)
 """
+import sys
+
+# Supervise before loading hardware libraries, so startup failures are retried too.
+if __name__ == "__main__" and "--launcher-child" not in sys.argv:
+    from launcher_watchdog import main
+    raise SystemExit(main(sys.argv[1:]))
+
 import time, math, random, importlib, threading, io, struct
 try:
     import keyboard as _keyboard
