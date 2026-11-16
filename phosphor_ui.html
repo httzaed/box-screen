@@ -1115,7 +1115,14 @@ function updateRhythmLayout(mode) {
     select.closest('label').hidden = select.dataset.rhythmKey !== zone + '_rhythm';
   }
   const classic = mode === 'legacy';
-  document.getElementById('music-settings').hidden = classic;
+  const beatEffect = classic && (zone === 'both'
+    ? [state.led?.fan_mode, state.led?.case_mode].includes('beat')
+    : state.led?.[zone + '_mode'] === 'beat');
+  const settings = document.getElementById('music-settings');
+  settings.hidden = classic && !beatEffect;
+  for (const input of settings.querySelectorAll('input')) {
+    input.closest('label').hidden = classic && input.dataset.rhythmKey !== 'rhythm_sensitivity';
+  }
   document.getElementById('classic-effects').hidden = !classic;
   document.getElementById('keyboard-floor').hidden = zone !== 'keyboard';
 

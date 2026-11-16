@@ -536,8 +536,8 @@ def _run_inner(stop_event):
                 drums = {}
             beat_bright = max(
                 drums.get("kick", 0.0),
-                0.82 * drums.get("snare", 0.0) ** 1.35,
-                0.50 * drums.get("high", 0.0) ** 2,
+                0.90 * drums.get("snare", 0.0),
+                0.72 * drums.get("high", 0.0),
             )
 
         def c(name):

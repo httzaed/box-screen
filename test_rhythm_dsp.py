@@ -27,6 +27,27 @@ class RhythmTests(unittest.TestCase):
         weak=self.run_signal((0.2,),amplitude=0.03)[0][2]
         strong=self.run_signal((0.2,),amplitude=0.2)[0][2]
         self.assertLess(weak,strong)
+    def test_quiet_hats_and_snare_over_bass(self):
+        detector = RhythmDetector()
+        hits = ((0.35, 1180, 0.08), (0.46, 7300, 0.035),
+                (0.51, 7300, 0.035), (0.56, 7300, 0.035))
+        detected = {name: [] for name in detector.events}
+        for block in range(85):
+            t = (block * 512 + np.arange(512)) / 44100
+            signal = 0.2 * np.sin(2 * np.pi * 86 * t) * (t >= 0.20)
+            for start, frequency, amplitude in hits:
+                envelope = (t >= start) * np.exp(-np.maximum(0, t - start) / 0.025)
+                signal += amplitude * np.sin(2 * np.pi * frequency * t) * envelope
+            previous = detector.events.copy()
+            for name, event in detector.process(signal, t[-1]).items():
+                if event[1] > previous[name][1] and event[0] > 0.25:
+                    detected[name].append(event[0])
+        self.assertEqual(detected["kick"], [])
+        for name, expected in (("snare", [0.35]), ("high", [0.46, 0.51, 0.56])):
+            self.assertEqual(len(detected[name]), len(expected))
+            for actual, start in zip(detected[name], expected):
+                self.assertTrue(start <= actual < start + 0.024)
+
     def test_release(self):
         self.assertEqual(event_level((1,1,0.8),2,0.09),0)
 
