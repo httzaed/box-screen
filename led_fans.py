@@ -453,8 +453,6 @@ def _run_inner(stop_event):
     except Exception as e:
         print(f"[LED] BPM source: {e}")
 
-    beat_flash_t  = 0.0
-    last_beat_seq = -1
     angle         = 0.0   # shared spin/comet offset
     wave_off      = 0.0
     hue_off       = 0.0
@@ -528,16 +526,19 @@ def _run_inner(stop_event):
         n_case     = max(1, int(len(case_idxs) * cfg["case_length"]))
         decay      = max(0.05, cfg["case_decay"])
 
-        # Beat
-        try:
-            import bpm_source as _bs
-            _, beat_seq = _bs.get_beat_event()
-            if beat_seq != last_beat_seq:
-                last_beat_seq = beat_seq
-                beat_flash_t  = now
-        except Exception:
-            pass
-        beat_bright = max(0.0, 1.0 - (now - beat_flash_t) / decay)
+        beat_bright = 0.0
+        if cfg["rhythm_mode"] == "legacy" and "beat" in (cfg["fan_mode"], cfg["case_mode"]):
+            # The decay slider sets the approximate visible duration of a kick.
+            # Shorter, quieter upper-band accents leave room for fast subdivisions.
+            try:
+                drums = _bs.get_rhythm_levels(decay / 5.0)
+            except Exception:
+                drums = {}
+            beat_bright = max(
+                drums.get("kick", 0.0),
+                0.82 * drums.get("snare", 0.0) ** 1.35,
+                0.50 * drums.get("high", 0.0) ** 2,
+            )
 
         def c(name):
             return resolve_color(name)
