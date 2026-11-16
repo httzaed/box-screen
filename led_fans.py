@@ -730,7 +730,7 @@ def _run_inner(stop_event):
 
             # Respecte les modes pulse explicites et off, même avec de la musique.
             active_fan_mode = cfg.get("fan_mode", "spin")
-            if music_detected and active_fan_mode not in ("off", "beat_pulse", "beat_pulse_dual"):
+            if music_detected and active_fan_mode not in ("off", "beat", "beat_pulse", "beat_pulse_dual"):
                 active_fan_mode = "beat_pulse_dual"
         except Exception:
             active_fan_mode = cfg.get("fan_mode", "spin")
