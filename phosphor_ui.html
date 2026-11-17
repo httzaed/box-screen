@@ -1242,7 +1242,7 @@ const COLOR_MAP = {
   "coral": "#ff503c",
   "orange": "#ff2800",
   "peach": "#ffa064",
-  "amber": "#ff5000",
+  "amber": "#ff3800",
   "gold": "#ffaf00",
   "yellow": "#ffc800",
   "lime": "#a0ff00",
@@ -1267,7 +1267,7 @@ const COLOR_MAP = {
 };
 const COLOR_FIELDS = {case:'case_color',case2:'case_color2',fans:'fan_color',fans2:'fan_color2',keyboard:'keyboard_color',keyboard2:'keyboard_color2'};
 const COLOR_DEFAULTS = {case:'green',case2:'cyan',fans:'green',fans2:'cyan',keyboard:'violet',keyboard2:'cyan'};
-const COLOR_LABELS = {violet:'Violet',cyan:'Cyan',blue:'Bleu',teal:'Turquoise',green:'Vert',yellow:'Jaune',orange:'Orange',red:'Rouge',pink:'Rose vif',white:'Blanc',lavender:'Lavande',indigo:'Indigo',magenta:'Magenta',rose:'Rose pastel',coral:'Corail',peach:'Pêche',amber:'Orange sanguine',lime:'Citron vert',mint:'Menthe',ice:'Bleu glacier',warm_white:'Blanc chaud',black:'Noir',gold:'Or',emerald:'Émeraude',azure:'Azur',silver:'Gris argent'};
+const COLOR_LABELS = {violet:'Violet',cyan:'Cyan',blue:'Bleu',teal:'Turquoise',green:'Vert',yellow:'Jaune',orange:'Orange',red:'Rouge',pink:'Rose vif',white:'Blanc',lavender:'Lavande',indigo:'Indigo',magenta:'Magenta',rose:'Rose pastel',coral:'Corail',peach:'Pêche',amber:'Orange vif',lime:'Citron vert',mint:'Menthe',ice:'Bleu glacier',warm_white:'Blanc chaud',black:'Noir',gold:'Or',emerald:'Émeraude',azure:'Azur',silver:'Gris argent'};
 function colorHex(value) { return /^#[0-9a-f]{6}$/i.test(value || '') ? value.toLowerCase() : COLOR_MAP[value] || '#b400ff'; }
 function setCustomColor(zone, value) {
   if (!/^#[0-9a-f]{6}$/i.test(value)) return;
