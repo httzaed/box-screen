@@ -144,7 +144,7 @@ _CFG_DEFAULTS = {
     "case_rhythm": "snare",
     "keyboard_rhythm": "high",
     "case_mode":     "beat",
-    "fan_mode":      "static",      # → beat_pulse_dual auto quand musique détectée
+    "fan_mode":      "static",
     "keyboard_mode": "sync_fans",  # couleur des fans, sans leur pulsation
     "case_color":    "violet",
     "case_color2":   "cyan",
@@ -458,14 +458,6 @@ def _run_inner(stop_event):
     hue_off       = 0.0
     breathe_t     = 0.0
 
-    # Auto mode: détecte la musique et passe les fans en beat_pulse
-    last_fan_mode = "spin"
-    original_fan_mode = last_fan_mode
-    music_detected = False
-    music_silence_time = 0.0
-    MUSIC_THRESHOLD = 0.15   # niveau audio pour détecter la musique
-    SILENCE_DELAY = 2.0       # secondes de silence avant de quitter beat_pulse
-
     import colorsys
 
     print(f"[LED] fans={fan_idxs}  case={case_idxs}  total={total_leds}")
@@ -480,7 +472,9 @@ def _run_inner(stop_event):
     pulse_level = 0.0
     pulse_mix = 0.0
     previous_frame = time.monotonic() - FRAME_TIME
+    last_sound_at = previous_frame
     valorant_active = False
+    valorant_breathe_t = 0.0
     game_check_at = 0.0
 
     while not stop_event.is_set():
@@ -702,42 +696,25 @@ def _run_inner(stop_event):
                     all_colors[ZONE_OFFSET + idx] = mk(
                         col[0]*(b_led+dark), col[1]*(b_led+dark), col[2]*(b_led+dark))
 
-        # ── Détection musique → auto beat_pulse sur les fans ────────────────
-        try:
-            import bpm_source as _bs
-            current_level = _bs.get_level()
-            current_bpm = _bs.get_bpm()
-
-            # Musique détectée si BPM valide OU niveau audio élevé
-            is_music = (current_bpm is not None) or (current_level > MUSIC_THRESHOLD)
-
-            if is_music:
-                if not music_detected:
-                    # Début de la musique → passe en beat_pulse
-                    music_detected = True
-                    original_fan_mode = cfg.get("fan_mode", "spin")
-                    print(f"[LED] Musique détectée (mode configuré: {original_fan_mode})")
-                music_silence_time = 0.0
-            else:
-                if music_detected:
-                    music_silence_time += FRAME_TIME
-                    # Après SILENCE_DELAY secondes de silence, revient au mode original
-                    if music_silence_time >= SILENCE_DELAY:
-                        music_detected = False
-                        print(f"[LED] Silence détecté → fans {original_fan_mode}")
-                else:
-                    music_silence_time = 0.0
-
-            # Respecte les modes pulse explicites et off, même avec de la musique.
-            active_fan_mode = cfg.get("fan_mode", "spin")
-            if music_detected and active_fan_mode not in ("off", "beat", "beat_pulse", "beat_pulse_dual"):
-                active_fan_mode = "beat_pulse_dual"
-        except Exception:
-            active_fan_mode = cfg.get("fan_mode", "spin")
-
         # ── Fans ─────────────────────────────────────────────────────────
+        active_fan_mode = cfg["fan_mode"]
+        try:
+            if max(_bs.get_stereo_levels()) > 0:
+                last_sound_at = now
+        except (NameError, AttributeError):
+            if target_level > 0.03:
+                last_sound_at = now
+        impacts_enabled = cfg["rhythm_mode"] in ("impacts", "split")
+        fan_audio_driven = active_fan_mode in ("beat", "beat_pulse", "beat_pulse_dual") or impacts_enabled
+        fan_idle = active_fan_mode != "off" and fan_audio_driven and now - last_sound_at >= 1.0
+        if fan_idle:
+            active_fan_mode = "breathe"
+        fan_primary = c(cfg["fan_color"])
+        fan_secondary = c(cfg["fan_color2"])
+        if active_fan_mode == "beat" and last_beat_seq % 2 == 1:
+            fan_primary = fan_secondary
         animate_zone(active_fan_mode, fan_idxs,
-                     c(cfg["fan_color"]), c(cfg["fan_color2"]),
+                     fan_primary, fan_secondary,
                      fan_spd, len(fan_idxs), beat_bright)
 
         # ── Case ─────────────────────────────────────────────────────────
@@ -752,7 +729,7 @@ def _run_inner(stop_event):
 
             if kb_mode == "sync_fans":
                 # Follow the fan hue only; never copy the animated brightness.
-                col = c(cfg["fan_color"])
+                col = fan_primary
                 if active_fan_mode == "beat_pulse_dual":
                     col = lerp(col, c(cfg["fan_color2"]), pulse_mix)
                 for kb_i in range(kb_leds):
@@ -789,8 +766,10 @@ def _run_inner(stop_event):
                     kb_colors[kb_i] = mk(col1[0]*b, col1[1]*b, col1[2]*b)
 
         # Apply causal impacts after legacy rendering; explicit off remains respected.
-        if cfg["rhythm_mode"] in ("impacts", "split"):
+        if impacts_enabled:
             for zone, indices in (("fan", fan_idxs), ("case", case_idxs)):
+                if zone == "fan" and fan_idle:
+                    continue
                 if cfg[zone + "_mode"] != "off":
                     for idx in indices:
                         all_colors[ZONE_OFFSET + idx] = mk(*c(cfg[zone + "_color"]), rhythm_level(zone))
@@ -807,8 +786,15 @@ def _run_inner(stop_event):
 
         # Temporary game override, after audio effects; never persist it to config.
         if valorant_active:
-            for idx in fan_idxs + case_idxs:
+            # UI speed 40/100 maps to 4.0; use elapsed time for a steady cycle.
+            valorant_breathe_t = math.fmod(valorant_breathe_t + dt * 0.015 * 4.0 / FRAME_TIME, math.tau)
+            intensity = 0.15 + 0.85 * (0.5 + 0.5 * math.sin(valorant_breathe_t))
+            for idx in fan_idxs:
+                all_colors[ZONE_OFFSET + idx] = mk(255, 0, 0, intensity)
+            for idx in case_idxs:
                 all_colors[ZONE_OFFSET + idx] = mk(255, 0, 0)
+        else:
+            valorant_breathe_t = 0.0
 
         send_started = time.monotonic()
         error = _send_frame(

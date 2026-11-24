@@ -404,15 +404,20 @@ def _open_stream(queue_out, running_flag):
         if not loopbacks:
             raise RuntimeError("Aucun loopback trouvé")
 
-        # Priorité dans l'ordre : Bluetooth/AirPods/Bose > Speakers > HD Audio > Main 1/2 > premier dispo
-        PREFER = ["airpods", "bluetooth", "bose", "speakers", "hd audio", "main 1/2", "realtek", "nahimic"]
+        # Suivre la sortie Windows, pas une préférence matérielle : un casque
+        # connecté peut rester silencieux pendant que les enceintes jouent.
         loopback_dev = loopbacks[0]
-        for pref in PREFER:
-            match = next((d for d in loopbacks if pref in d["name"].lower()), None)
-            if match:
-                loopback_dev = match
-                print(f"[BPM] Priorité: match '{pref}' -> {loopback_dev['name']}")
-                break
+        try:
+            default_loopback = pa.get_default_wasapi_loopback()
+            match = next((d for d in loopbacks
+                          if d["index"] == default_loopback["index"]), None)
+            if match is None:
+                raise RuntimeError("Sortie Windows absente des loopbacks autorisés")
+            loopback_dev = match
+            print(f"[BPM] Sortie Windows par défaut -> {loopback_dev['name']}")
+        except Exception as exc:
+            print(f"[BPM] Sortie par défaut indisponible ({exc}); "
+                  f"repli -> {loopback_dev['name']}")
 
         rate   = int(loopback_dev["defaultSampleRate"])
         ch     = loopback_dev["maxInputChannels"]

@@ -363,6 +363,9 @@ class _Handler(BaseHTTPRequestHandler):
                 # SSE endpoint for real-time state updates
                 self._handle_sse()
                 return
+            elif p=="/api/ambience":
+                import music_ambience
+                self._send(200, "application/json", json.dumps(music_ambience.snapshot()))
             elif p=="/api/status":
                 state=_get_state() if _get_state else {}
                 try:
@@ -462,6 +465,11 @@ class _Handler(BaseHTTPRequestHandler):
             parts=[urllib.parse.unquote(x) for x in urllib.parse.urlparse(self.path).path.split("/") if x]
             if len(parts)>=2 and parts[0]=="api":
                 k=parts[1]
+                if k=="ambience" and len(parts)==3:
+                    import music_ambience
+                    result = music_ambience.action(parts[2])
+                    self._send(200 if result['ok'] else 400, "application/json", json.dumps(result))
+                    return
                 if k=="mode" and len(parts)>=3 and _switch:
                     _do_mode(parts[2])
                     self._send(200,"application/json",'{"ok":true}')
@@ -1030,6 +1038,8 @@ def start(switch_fn=None,switch_hud_fn=None,get_state_fn=None,set_led_fn=None,au
 
         # Start SSE broadcaster for real-time state updates
         _sse_start()
+        import music_ambience
+        music_ambience.start()
         print(f"[SSE] Real-time events available at http://localhost:{PORT}/api/events")
 
     except Exception as e:

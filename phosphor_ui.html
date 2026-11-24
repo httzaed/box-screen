@@ -268,6 +268,16 @@ input::placeholder{color:#7fa390}
 
 .lighting-modes{display:grid;gap:8px}#lighting [hidden]{display:none!important}#lighting .music-mode strong{white-space:normal}#lighting #music-settings{margin:0;padding:0;border:0;gap:4px}
 @media(min-width:1101px) and (max-height:900px){#lighting{gap:5px;padding:12px}#lighting .zone-btn{min-height:52px}#lighting .led-mode-btn{min-height:30px!important}#lighting .lighting-modes{gap:4px}}
+
+#music-palette-panel{margin-top:auto;flex:0 0 auto;padding:8px 10px;border:1px solid var(--line);background:#020b06;min-width:0}
+.album-heading,.album-row,.ambience-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.album-heading>span{font-size:10px;letter-spacing:.13em;color:var(--grn);text-transform:uppercase}
+#music-palette-panel .save-btn{font-size:10px;padding:4px 6px;min-width:0}
+.album-row{margin:6px 0;min-height:22px}#album-colors{display:flex;gap:5px;flex-shrink:0}#album-colors i{width:40px;height:22px;border:1px solid #ffffff44}
+#album-status{font-size:10px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ambience-buttons{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px}.ambience-buttons kbd{display:block;font-size:9px;opacity:.65}
+.ambience-footer{margin-top:5px;font-size:9px;color:var(--dim)}
+@media(max-width:600px){.ambience-buttons{grid-template-columns:repeat(3,1fr)}}
 </style></head><body><div class="bg-floor" aria-hidden="true"><i></i></div><div class="crt-overlay"></div><main class="app"><header><div class="hz logo-mark" aria-hidden="true"></div><div class="brand"><h1 class="glitch" data-text="HEDJI’S DASHBOARD">HEDJI’S DASHBOARD</h1><p class="muted">Box Screen Control <span class="on">//</span> Écran 1920 × 462</p></div><div class="sweep" aria-hidden="true"><i></i></div><div class="services" role="status"><span class="service" id="conn">Connexion…</span><span class="service" id="hostip">Serveur local</span><span class="service mono" id="clock">--:--:--</span></div><span class="shortcuts"><span class="kc">F</span> visualisation <span class="kc">↑</span><span class="kc">↓</span> luminosité</span><details class="pnl journal"><summary>Journal</summary><div id="log"></div></details><button class="save-btn" id="crt-toggle" aria-pressed="false">Effet CRT</button></header><div class="dashboard-grid"><div class="dashboard-column"><section class="pnl hero-grid" id="overview" aria-label="Vue d’ensemble"><div class="preview"><span class="live-tag" aria-hidden="true">LIVE · APERÇU ÉCRAN</span><canvas id="screen" aria-label="Visualisation simplifiée du signal audio"></canvas></div><div class="progress" role="progressbar" aria-label="Progression du morceau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="pbar"></div></div><div class="cascade" title="Ordre automatique : les paroles d’abord, sinon la visualisation musicale, sinon l’ambiance au repos."><ol id="cascade-steps" aria-label="Affichage en cours"><li data-step="lyrics">Paroles</li><li class="arrow" aria-hidden="true">→</li><li data-step="audio">Visualisation</li><li class="arrow" aria-hidden="true">→</li><li data-step="idle">Ambiance au repos</li></ol><label class="force-viz" title="Afficher la visualisation musicale même quand il y a des paroles. Raccourci : F">Visu forcée <button id="force-viz-btn" class="save-btn">[ off ]</button></label></div><div class="now"><div class="track"><span class="eyebrow">Lecture en cours · <span id="play">En attente</span></span><h2 id="trackname">En attente d’un morceau</h2></div><div class="stats"><div class="stat"><small>Position</small><b class="mono" id="ptime">0:00</b></div><div class="stat"><small>Tempo</small><b><span id="bpm">—</span> <span class="unit">BPM</span> <span id="beatdot">·</span></b></div><div class="stat"><small>Niveau</small><div class="levels" role="img" aria-label="Niveau audio gauche et droite"><span>G</span><div class="level"><div id="vuL"></div></div><span>D</span><div class="level"><div id="vuR"></div></div></div></div></div></div><div hidden=""><canvas id="mini"></canvas><b id="modename">Automatique</b><span id="peak"></span><span id="uptime"></span><span id="screen-mode">Automatique</span><span id="cascade-state">En attente</span><span id="cascade-track"></span></div></section><section class="pnl lyrics-panel" aria-labelledby="lyrics-section"><div class="section-head"><div><h2 id="lyrics-section"><i aria-hidden="true">01</i>Paroles</h2></div><span class="muted">Source : <span id="lyrics-source-name">Automatique</span></span><button id="lyrics-flag-btn" title="Ignorer pour cette session. Maj + clic pour exclure définitivement.">Signaler des paroles incorrectes</button></div><div id="lyrics-current"><p id="lyrics-live-status" class="hint">Connexion aux paroles…</p><div id="lyrics-previous-line-3" class="lyrics-context far farther"></div><div id="lyrics-previous-line-2" class="lyrics-context far"></div><div id="lyrics-previous-line" class="lyrics-context"></div><div id="lyrics-current-line" role="status" aria-live="polite">En attente d’un morceau…</div><div id="lyrics-next-line" class="lyrics-context"></div><div id="lyrics-next-line-2" class="lyrics-context far"></div><div id="lyrics-next-line-3" class="lyrics-context far farther"></div></div><div id="lyrics-feedback" role="status" style="display:none"><span></span></div><div class="lyrics-search"><input id="lyrics-artist" aria-label="Artiste" placeholder="Artiste"><input id="lyrics-title" aria-label="Titre du morceau" placeholder="Titre du morceau"><button id="lyrics-search-btn" class="save-btn">Rechercher les paroles</button></div><div class="slider-row offset-row"><label for="lyrics-offset" title="Positif : retarder les paroles. Négatif : les avancer. Le réglage est mémorisé pour ce morceau.">Décalage</label><button type="button" class="save-btn" data-offset-step="-0.1" aria-label="Avancer les paroles de 0,1 seconde">− 0,1</button><input type="range" id="lyrics-offset" min="-60" max="60" step="0.1" value="0"><button type="button" class="save-btn" data-offset-step="0.1" aria-label="Retarder les paroles de 0,1 seconde">+ 0,1</button><span class="slider-val">0,0 s</span><button type="button" class="save-btn" id="lyrics-offset-reset">Remettre à 0</button></div></section></div><div class="dashboard-column"><section class="pnl case-panel" aria-label="Boîtier 3D"><div class="case-heading"><h2><i aria-hidden="true">02</i>Boîtier</h2><div class="view-buttons"><button class="save-btn" data-view="tq">3/4</button><button class="save-btn" data-view="face">Vitre</button><button class="save-btn" data-view="rear">Arrière</button><button class="save-btn" data-view="side">Côté</button><button class="save-btn" data-view="top">Dessus</button></div></div><div class="case-stage"><div id="pc3dwrap" role="img" aria-label="Boîtier Thermalright en ASCII 3D"><div id="pc3d"></div></div><div class="stage-caption"><span>Thermalright · 8 ventilateurs RGB</span><span>Glisser pour tourner</span></div></div><div class="case-options"><button class="preview-switch" data-case-option="auto" role="switch" aria-checked="true" title="Le boîtier tourne doucement"><span><strong>Rotation auto</strong></span><i></i></button><button class="preview-switch" data-case-option="explode" role="switch" aria-checked="false" title="Écarter les panneaux"><span><strong>Vue éclatée</strong></span><i></i></button><button class="preview-switch" data-case-option="interior" role="switch" aria-checked="true" title="Carte mère, ventilateurs et GPU"><span><strong>Intérieur visible</strong></span><i></i></button></div><div class="case-sliders"><label class="preview-slider">Zoom<input type="range" id="case-zoom" min=".35" max="1.1" step=".01" value=".64"></label><label class="preview-slider">Animation<input type="range" id="case-speed" min="0" max="10" step="1" value="5"></label></div></section>
 </div><div class="dashboard-column"><section class="pnl lighting" id="lighting"><div class="lighting-head"><h2><i aria-hidden="true">03</i>Éclairage</h2><div class="slider-row"><label for="bright" title="S’applique à toutes les zones. Raccourci : ↑ ↓">Luminosité générale</label><input type="range" id="bright" min="0" max="100" value="80"><span class="slider-val">80</span></div></div>
 <div class="lighting-modes"><h3>Mode d’éclairage</h3><div class="music-modes" role="radiogroup" aria-label="Mode de synchronisation">
@@ -328,7 +338,18 @@ input::placeholder{color:#7fa390}
             <span class="color-swatch" data-zone="keyboard" style="background:#f44336;" data-color="red"></span>
             <span class="color-swatch" data-zone="keyboard" style="background:#e91e63;" data-color="pink"></span>
             <span class="color-swatch" data-zone="keyboard" style="background:#ffffff;" data-color="white"></span>
-          </div></div></div><div id="zone-banner" aria-hidden="true"><div><span></span><b></b></div></div></section></div></div></main><script>
+          </div></div></div><div id="music-palette-panel" aria-label="Couleurs de la musique">
+<div class="album-heading"><span>Couleurs de la musique</span><button class="save-btn" id="music-colors-toggle" aria-pressed="false">Appliquer : off</button></div>
+<div class="album-row"><div id="album-colors" aria-label="Palette du morceau"></div><span id="album-status" role="status">En attente de pochette</span></div>
+<div class="ambience-buttons" aria-label="Ambiances">
+<button class="save-btn" data-ambience="default" title="Ctrl + Alt + F1">Défaut <kbd>F1</kbd></button>
+<button class="save-btn" data-ambience="tournage" title="Ctrl + Alt + F2">Tournage <kbd>F2</kbd></button>
+<button class="save-btn" data-ambience="montage" title="Ctrl + Alt + F3">Montage <kbd>F3</kbd></button>
+<button class="save-btn" data-ambience="st" title="Ctrl + Alt + F4">ST <kbd>F4</kbd></button>
+<button class="save-btn" data-ambience="soiree" title="Ctrl + Alt + F5">Soirée <kbd>F5</kbd></button>
+<button class="save-btn" data-ambience="autre" title="Ctrl + Alt + F6">Autre <kbd>F6</kbd></button></div>
+<div class="ambience-footer"><span>Raccourcis : Ctrl + Alt + F1–F6</span><button class="save-btn" id="save-ambience">Mémoriser dans Autre</button></div>
+</div></section></div></div></main><script>
 // ── State ─────────────────────────────────────────────────────────────────────
 let state = {
   mode: null,
@@ -1124,7 +1145,7 @@ function updateRhythmLayout(mode) {
     behavior = 'Cette zone pulse sur le son choisi avec sa couleur principale. La synchro remplace son effet.';
   } else if (mode === 'legacy') {
     behavior = zone === 'fan'
-      ? 'Au repos, les ventilateurs utilisent cet effet. En musique, ils pulsent.'
+      ? 'Les ventilateurs suivent l’effet choisi. En mode Rythme, les deux couleurs alternent à chaque battement.'
       : 'Cette zone utilise l’effet sélectionné.';
   }
   if (state.led?.[zone + '_mode'] === 'off') behavior = classic ? 'Cette zone est éteinte.' : 'Zone éteinte. Choisis un effet dans Effets classiques pour la rallumer.';
@@ -1869,19 +1890,38 @@ setInterval(poll, 500);
 /* Thème « Bad » : remplissage des curseurs et rappel de la zone active. Lecture seule du DOM. */
 (function(){
   const paint=el=>{const a=el.min===''?0:+el.min,b=el.max===''?100:+el.max,p=b>a?(el.value-a)/(b-a)*100:0,v=p.toFixed(1)+'%';if(el.style.getPropertyValue('--p')!==v)el.style.setProperty('--p',v)};
-  const banner=document.getElementById('zone-banner'),label=banner.querySelector('span'),name=banner.querySelector('b');
-  const set=(el,t)=>{if(el.textContent!==t)el.textContent=t};
-  function refresh(){
-    document.querySelectorAll('input[type=range]').forEach(paint);
-    const card=document.querySelector('.zone-btn.active');if(!card)return;
-    const dots=card.querySelectorAll('.zone-dots i');
-    set(name,card.querySelector('span').textContent);
-    set(label,'Zone active · '+card.querySelector('small').textContent);
-    banner.style.setProperty('--c1',(dots[0]&&dots[0].style.background)||'#2bff88');
-    banner.style.setProperty('--c2',(dots[1]&&dots[1].style.background)||'#2bff88');
-  }
+  function refresh(){document.querySelectorAll('input[type=range]').forEach(paint);}
   document.addEventListener('input',e=>{if(e.target.type==='range')paint(e.target)},true);
   document.addEventListener('click',()=>setTimeout(refresh,60),true);
   refresh();setInterval(refresh,500);
 })();
+
+let ambienceState = {};
+async function refreshAmbience(){
+  try {
+    const r=await fetch('/api/ambience');if(!r.ok)throw new Error('Redémarre le programme pour activer les ambiances');
+    const data=await r.json();ambienceState=data;
+    const colors=document.getElementById('album-colors');
+    if(colors.dataset.colors!==JSON.stringify(data.colors)){
+      colors.replaceChildren();for(const color of data.colors){const chip=document.createElement('i');chip.style.background=color;chip.title=color;colors.append(chip)}
+      colors.dataset.colors=JSON.stringify(data.colors);
+    }
+    const label=document.getElementById('album-status');label.textContent=data.colors.length?data.track:data.status;label.title=data.status;
+    const toggle=document.getElementById('music-colors-toggle');toggle.textContent='Appliquer : '+(data.enabled?'on':'off');toggle.setAttribute('aria-pressed',String(data.enabled));
+    document.querySelectorAll('[data-ambience]').forEach(b=>{b.classList.toggle('active',data.active===b.dataset.ambience);b.setAttribute('aria-pressed',String(data.active===b.dataset.ambience));});
+  }catch(e){document.getElementById('album-status').textContent=e.message;}
+}
+async function setAmbience(name){
+  try{const r=await fetch('/api/ambience/'+name,{method:'POST'});const data=await r.json();if(!r.ok||!data.ok)throw new Error(data.error||'Ambiance indisponible');await refreshAmbience();await poll();}
+  catch(e){document.getElementById('album-status').textContent=e.message;log(e.message);}
+}
+document.querySelectorAll('[data-ambience]').forEach(b=>b.addEventListener('click',()=>setAmbience(b.dataset.ambience)));
+document.getElementById('music-colors-toggle').addEventListener('click',()=>setAmbience(ambienceState.enabled?'music-off':'music-on'));
+document.getElementById('save-ambience').addEventListener('click',()=>setAmbience('save-autre'));
+window.addEventListener('keydown',e=>{
+  if(!e.ctrlKey||!e.altKey||e.shiftKey||!/^F[1-6]$/.test(e.key))return;
+  e.preventDefault();
+  if(!e.repeat&&!ambienceState.global_hotkeys)setAmbience(['default','tournage','montage','st','soiree','autre'][Number(e.key.slice(1))-1]);
+});
+refreshAmbience();setInterval(refreshAmbience,2500);
 </script></body></html>

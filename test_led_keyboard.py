@@ -26,5 +26,6 @@ class KeyboardTests(unittest.TestCase):
     def test_mouse_is_not_used_when_keyboard_absent(self):
         self.assertIsNone(select([self.mouse, self.board]))
 
+
 if __name__ == '__main__':
     unittest.main()
