@@ -16,6 +16,9 @@ youtube_oauth.json
 youtube_quota_backoff.json
 lyrics_cache.json
 cookies.txt
+valorant_config.json
+valorant_cache.json
+*.json.tmp
 
 # Fichiers de test/temporaire
 _mount_probe*.txt

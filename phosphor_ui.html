@@ -1,5 +1,5 @@
 <!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hedji’s Dashboard</title><style>
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{--grn:#2bff88;--dim:#83a992;--line:#153723;--pan:#06150d;--amb:#ffc24d;margin:0;background:#020803;color:#d6f5e3;font:14px/1.5 'Segoe UI',system-ui,sans-serif}button,input,select{font:inherit}button{cursor:pointer}button:disabled{opacity:.5;cursor:wait}button:focus-visible,input:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--grn);outline-offset:4px}a{color:inherit}h1,h2,h3,p{margin:0}h1{font-size:22px;letter-spacing:.03em;color:var(--grn);font-family:Consolas,'Cascadia Mono',monospace}h2{font-size:18px;font-weight:600;color:#edfff4}h3{font-size:13px;font-weight:600;margin-bottom:12px}.eyebrow,.mono{font-family:Consolas,'Cascadia Mono',monospace}.eyebrow{color:var(--dim);font-size:10px;letter-spacing:.13em;text-transform:uppercase}.muted,.hint{color:var(--dim);font-size:12px}.app{max-width:1320px;margin:auto;padding:28px 24px 40px;display:grid;gap:16px}header{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;padding:0 4px 8px}.services{display:flex;gap:5px;flex-wrap:wrap;padding:5px;background:#06150d;border:1px solid var(--line);border-radius:10px}.service{padding:7px 12px;background:#0a1f14;border-radius:6px;font-size:12px}.on{color:var(--grn)}.off{color:var(--amb)}nav{display:flex;align-items:center;flex-wrap:wrap;gap:8px}nav a{text-decoration:none;color:var(--dim);font-size:12px;padding:5px 10px}nav a:hover{color:var(--grn)}nav button{margin-left:auto}.pnl{background:var(--pan);border:1px solid var(--line);border-radius:12px;overflow:hidden}section{scroll-margin-top:16px}.section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:20px}.section-head p{margin-top:4px}.preview{position:relative;background:#010402;border-bottom:1px solid var(--line)}#screen{display:block;width:100%;height:auto;aspect-ratio:1920/462}.preview-badges{position:absolute;left:14px;right:14px;top:12px;display:flex;justify-content:space-between;gap:10px;pointer-events:none}.badge{font-size:11px;border:1px solid #294733;border-radius:99px;padding:3px 10px;background:#020c08db;color:var(--dim)}.preview-badges .badge:first-child{color:#d0b16c;border-color:#4a3c1d}.now{padding:18px 20px;display:flex;align-items:center;justify-content:space-between;gap:22px;flex-wrap:wrap}.track{flex:1 1 280px;min-width:0}.track h2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}.stats{display:flex;align-items:center;gap:28px}.stat{display:grid;gap:3px}.stat small{font-size:11px;color:var(--dim)}.stat b{font-size:13px;font-weight:500}.level{height:6px;width:110px;background:#12301f;border-radius:3px;overflow:hidden}#vuL{height:100%;width:100%;background:var(--grn)}.footnote{font-size:12px;color:var(--dim);border-top:1px solid var(--line);padding:10px 20px}.save-btn,.zone-btn,.led-mode-btn{border:1px solid var(--line);background:#0a1f14;color:#bad7c6;padding:8px 14px;border-radius:8px;transition:background .15s,border-color .15s}.save-btn:hover,.zone-btn:hover,.led-mode-btn:hover{border-color:#419969}.active:not(.color-swatch){background:#0e3a22!important;border-color:var(--grn)!important;color:var(--grn)!important}.save-btn{font-size:12px}.primary{background:var(--grn);color:#021006;border-color:var(--grn);font-weight:600}.lighting{padding:22px}.light-top{display:grid;grid-template-columns:1fr 1.25fr;gap:32px;align-items:center}.case-stage{position:relative;border:1px solid #12301f;border-radius:10px;background:radial-gradient(ellipse at 50% 70%,#0c2819,#020b06 70%);overflow:hidden}#pc3dwrap{height:300px;display:flex;align-items:center;justify-content:center;perspective:860px;cursor:grab;touch-action:none;overflow:hidden}#pc3dwrap.grabbing{cursor:grabbing}.face{position:absolute;left:50%;top:50%}.asc{margin:0;font:11px/12px Consolas,'Cascadia Mono',monospace;white-space:pre;color:var(--grn);text-shadow:0 0 6px #2bff8866}.fanx{cursor:pointer;color:#37ff8b;text-shadow:0 0 8px #2bff8888}.fanx.off{color:#0c4a2b;text-shadow:none}.stage-caption{display:flex;justify-content:space-between;padding:10px 14px;border-top:1px solid var(--line);font-size:11px;color:var(--dim)}.zone-group{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;padding:5px;background:#020803;border:1px solid var(--line);border-radius:12px;margin-bottom:22px}.zone-btn{text-align:left;padding:12px;font-size:13px}.zone-btn small{display:block;font-size:11px;color:var(--dim);margin-top:3px}.light-settings{display:grid;grid-template-columns:1fr 1fr;gap:32px;border-top:1px solid var(--line);padding-top:22px;margin-top:22px}.led-mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.led-mode-btn{font-size:12px;text-align:left;min-height:44px;padding:9px 12px}.palettes{display:grid;gap:20px}.palette>[id]{display:flex!important;gap:10px!important;flex-wrap:wrap;margin:0!important}.color-swatch{display:inline-block;width:27px;height:27px;border:3px solid var(--pan);border-radius:50%;cursor:pointer;box-shadow:none!important}.color-swatch.active{outline:2px solid #edfff4;outline-offset:1px}.slider-row{display:flex;align-items:center;gap:16px;font-size:13px;margin:16px 0}.slider-row label{min-width:118px}.slider-row input{flex:1;width:100%;min-width:30px}.slider-val{min-width:45px;text-align:right;color:var(--grn);font:12px Consolas,'Cascadia Mono',monospace}input[type=range]{appearance:none;height:5px;border-radius:3px;background:#193b28;cursor:pointer}input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;border:3px solid #06150d;background:var(--grn);border-radius:50%;box-shadow:0 0 0 1px var(--grn)}.led-hint{font-size:12px;color:var(--dim);margin-top:14px}.lower-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}.music-sync,.screen-settings,.lyrics-panel{padding:22px}.music-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}.music-heading h2{font-size:18px}.music-sync p{font-size:12px;color:var(--dim)}.music-badge{display:none}.music-modes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.music-mode{cursor:pointer;position:relative}.music-mode input{position:absolute;opacity:0}.music-mode span{display:block;padding:12px;border:1px solid var(--line);border-radius:8px;height:100%;background:#0a1f14}.music-mode strong{display:block;font-size:13px}.music-mode small{display:block;font-size:11px;color:var(--dim);margin-top:6px}.music-mode input:checked+span{border-color:var(--grn);background:#0e3a22}.music-mode input:focus-visible+span{outline:2px solid var(--grn)}.music-settings{display:grid;gap:18px;border-top:1px solid var(--line);padding-top:18px;margin-top:18px}.music-label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px}.music-control input{width:100%;margin:8px 0}.music-control output{color:var(--grn);font-size:12px}.music-routing{margin-top:20px}.music-routes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.music-route{display:grid;gap:6px;color:var(--dim);font-size:12px}.music-route select,input:not([type]),input[type=text]{min-width:0;width:100%;border:1px solid var(--line);border-radius:8px;padding:10px;background:#020803;color:#e0f5e8}.screen-item{padding:14px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:16px}.screen-item span{font-size:12px;color:var(--dim)}.screen-item strong{font-weight:500}.lyrics-search{display:flex;gap:8px;margin:18px 0}.lyrics-search input{flex:1;min-width:0}#lyrics-current{border:1px solid var(--line);border-radius:8px;background:#020b06;padding:14px}#lyrics-current-line{margin-top:10px;color:var(--grn);min-height:40px}#lyrics-flag-btn{background:transparent;border:1px solid #60312e;border-radius:99px;color:#f49e94;font-size:11px;padding:4px 10px;cursor:pointer}.journal{padding:16px 20px}.journal summary{cursor:pointer;font-size:12px;color:var(--dim)}#log{font:11px/1.8 Consolas,'Cascadia Mono',monospace;max-height:190px;overflow:auto;margin-top:16px;color:var(--dim)}footer{display:flex;justify-content:space-between;font-size:11px;color:#61846f}.crt-overlay{display:none;position:fixed;inset:0;pointer-events:none;z-index:50;background:repeating-linear-gradient(0deg,#2bff8807 0,#2bff8807 1px,transparent 2px,transparent 4px)}body.crt .crt-overlay{display:block}[hidden]{display:none!important}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{--grn:#2bff88;--dim:#83a992;--line:#153723;--pan:#06150d;--amb:#ffc24d;margin:0;background:#020803;color:#d6f5e3;font:14px/1.5 'Segoe UI',system-ui,sans-serif}button,input,select{font:inherit}button{cursor:pointer}button:disabled{opacity:.5;cursor:wait}button:focus-visible,input:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--grn);outline-offset:4px}a{color:inherit}h1,h2,h3,p{margin:0}h1{font-size:22px;letter-spacing:.03em;color:var(--grn);font-family:Consolas,'Cascadia Mono',monospace}h2{font-size:18px;font-weight:600;color:#edfff4}h3{font-size:13px;font-weight:600;margin-bottom:12px}.eyebrow,.mono{font-family:Consolas,'Cascadia Mono',monospace}.eyebrow{color:var(--dim);font-size:10px;letter-spacing:.13em;text-transform:uppercase}.muted,.hint{color:var(--dim);font-size:12px}.app{max-width:1320px;margin:auto;padding:28px 24px 40px;display:grid;gap:16px}header{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;padding:0 4px 8px}.services{display:flex;gap:5px;flex-wrap:wrap;padding:5px;background:#06150d;border:1px solid var(--line);border-radius:10px}.service{padding:7px 12px;background:#0a1f14;border-radius:6px;font-size:12px}.on{color:var(--grn)}.off{color:var(--amb)}nav{display:flex;align-items:center;flex-wrap:wrap;gap:8px}nav a{text-decoration:none;color:var(--dim);font-size:12px;padding:5px 10px}nav a:hover{color:var(--grn)}nav button{margin-left:auto}.pnl{background:var(--pan);border:1px solid var(--line);border-radius:12px;overflow:hidden}section{scroll-margin-top:16px}.section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:20px}.section-head p{margin-top:4px}.preview{position:relative;background:#010402;border-bottom:1px solid var(--line)}#screen{display:block;width:100%;height:auto;aspect-ratio:1920/462}.preview-badges{position:absolute;left:14px;right:14px;top:12px;display:flex;justify-content:space-between;gap:10px;pointer-events:none}.badge{font-size:11px;border:1px solid #294733;border-radius:99px;padding:3px 10px;background:#020c08db;color:var(--dim)}.preview-badges .badge:first-child{color:#d0b16c;border-color:#4a3c1d}.now{padding:18px 20px;display:flex;align-items:center;justify-content:space-between;gap:22px;flex-wrap:wrap}.track{flex:1 1 280px;min-width:0}.track h2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}.stats{display:flex;align-items:center;gap:28px}.stat{display:grid;gap:3px}.stat small{font-size:11px;color:var(--dim)}.stat b{font-size:13px;font-weight:500}.level{height:6px;width:110px;background:#12301f;border-radius:3px;overflow:hidden}#vuL{height:100%;width:100%;background:var(--grn)}.footnote{font-size:12px;color:var(--dim);border-top:1px solid var(--line);padding:10px 20px}.save-btn,.zone-btn,.led-mode-btn{border:1px solid var(--line);background:#0a1f14;color:#bad7c6;padding:8px 14px;border-radius:8px;transition:background .15s,border-color .15s}.save-btn:hover,.zone-btn:hover,.led-mode-btn:hover{border-color:#419969}.active:not(.color-swatch){background:#0e3a22!important;border-color:var(--grn)!important;color:var(--grn)!important}.save-btn{font-size:12px}.primary{background:var(--grn);color:#021006;border-color:var(--grn);font-weight:600}.lighting{padding:22px}.light-top{display:grid;grid-template-columns:1fr 1.25fr;gap:32px;align-items:center}.case-stage{position:relative;border:1px solid #12301f;border-radius:10px;background:radial-gradient(ellipse at 50% 70%,#0c2819,#020b06 70%);overflow:hidden}#pc3dwrap{height:300px;display:flex;align-items:center;justify-content:center;perspective:860px;cursor:grab;touch-action:none;overflow:hidden}#pc3dwrap.grabbing{cursor:grabbing}.face{position:absolute;left:50%;top:50%}.asc{margin:0;font:11px/12px Consolas,'Cascadia Mono',monospace;white-space:pre;color:var(--grn);text-shadow:0 0 6px #2bff8866}.fanx{cursor:pointer;color:#37ff8b;text-shadow:0 0 8px #2bff8888}.fanx.off{color:#0c4a2b;text-shadow:none}.stage-caption{display:flex;justify-content:space-between;padding:10px 14px;border-top:1px solid var(--line);font-size:11px;color:var(--dim)}.zone-group{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;padding:5px;background:#020803;border:1px solid var(--line);border-radius:12px;margin-bottom:22px}.zone-btn{text-align:left;padding:12px;font-size:13px}.zone-btn small{display:block;font-size:11px;color:var(--dim);margin-top:3px}.light-settings{display:grid;grid-template-columns:1fr 1fr;gap:32px;border-top:1px solid var(--line);padding-top:22px;margin-top:22px}.led-mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.led-mode-btn{font-size:12px;text-align:left;min-height:44px;padding:9px 12px}.palettes{display:grid;gap:20px}.palette>[id]{display:flex!important;gap:10px!important;flex-wrap:wrap;margin:0!important}.color-swatch{display:inline-block;width:27px;height:27px;border:3px solid var(--pan);border-radius:50%;cursor:pointer;box-shadow:none!important}.color-swatch.active{outline:2px solid #edfff4;outline-offset:1px}.slider-row{display:flex;align-items:center;gap:16px;font-size:13px;margin:16px 0}.slider-row label{min-width:118px}.slider-row input{flex:1;width:100%;min-width:30px}.slider-val{min-width:45px;text-align:right;color:var(--grn);font:12px Consolas,'Cascadia Mono',monospace}input[type=range]{appearance:none;height:5px;border-radius:3px;background:#193b28;cursor:pointer}input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;border:3px solid #06150d;background:var(--grn);border-radius:50%;box-shadow:0 0 0 1px var(--grn)}.led-hint{font-size:12px;color:var(--dim);margin-top:14px}.lower-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}.music-sync,.screen-settings,.lyrics-panel{padding:22px}.music-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}.music-heading h2{font-size:18px}.music-sync p{font-size:12px;color:var(--dim)}.music-badge{display:none}.music-modes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.music-mode{cursor:pointer;position:relative}.music-mode input{position:absolute;opacity:0}.music-mode span{display:block;padding:12px;border:1px solid var(--line);border-radius:8px;height:100%;background:#0a1f14}.music-mode strong{display:block;font-size:13px}.music-mode small{display:block;font-size:11px;color:var(--dim);margin-top:6px}.music-mode input:checked+span{border-color:var(--grn);background:#0e3a22}.music-mode input:focus-visible+span{outline:2px solid var(--grn)}.music-settings{display:grid;gap:18px;border-top:1px solid var(--line);padding-top:18px;margin-top:18px}.music-label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px}.music-control input{width:100%;margin:8px 0}.music-control output{color:var(--grn);font-size:12px}.music-routing{margin-top:20px}.music-routes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.music-route{display:grid;gap:6px;color:var(--dim);font-size:12px}.music-route select,input:not([type]),input[type=text]{min-width:0;width:100%;border:1px solid var(--line);border-radius:8px;padding:10px;background:#020803;color:#e0f5e8}.screen-item{padding:14px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:16px}.screen-item span{font-size:12px;color:var(--dim)}.screen-item strong{font-weight:500}.lyrics-search{display:flex;gap:8px;margin:18px 0}.lyrics-search input{flex:1;min-width:0}#lyrics-current{border:1px solid var(--line);border-radius:8px;background:#020b06;padding:14px}#lyrics-current-line{margin-top:10px;color:var(--grn);min-height:40px}#lyrics-choose-btn{background:transparent;border:1px solid #60312e;border-radius:99px;color:#f49e94;font-size:11px;padding:4px 10px;cursor:pointer}.journal{padding:16px 20px}.journal summary{cursor:pointer;font-size:12px;color:var(--dim)}#log{font:11px/1.8 Consolas,'Cascadia Mono',monospace;max-height:190px;overflow:auto;margin-top:16px;color:var(--dim)}footer{display:flex;justify-content:space-between;font-size:11px;color:#61846f}.crt-overlay{display:none;position:fixed;inset:0;pointer-events:none;z-index:50;background:repeating-linear-gradient(0deg,#2bff8807 0,#2bff8807 1px,transparent 2px,transparent 4px)}body.crt .crt-overlay{display:block}[hidden]{display:none!important}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 @media(max-width:850px){.light-top,.light-settings,.lower-grid{grid-template-columns:1fr}.stats{gap:18px}.app{padding:20px 14px}.light-top{gap:20px}.light-settings{gap:24px}}@media(max-width:500px){.music-modes{grid-template-columns:1fr}.music-routes{grid-template-columns:1fr}.lighting,.music-sync,.screen-settings,.lyrics-panel{padding:16px}.zone-btn{padding:9px 7px}.zone-btn small{font-size:10px}.stats{flex-wrap:wrap}.lyrics-search{flex-wrap:wrap}.slider-row label{min-width:95px}.preview-badges{left:8px;right:8px;top:8px}.badge{font-size:9px;padding:2px 6px}#screen{min-height:130px}.led-mode-grid{grid-template-columns:repeat(2,1fr)}footer{flex-wrap:wrap;gap:5px}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important}}
 .case-composition{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(230px,1fr);gap:18px}.light-top{display:flex;flex-direction:column;gap:20px;align-items:stretch}.case-stage{width:100%}#pc3dwrap{height:420px;perspective:1500px;perspective-origin:50% 40%}#pc3d{position:relative;width:0;height:0;transform-style:preserve-3d}.case-face{position:absolute;left:0;top:0;overflow:hidden}.case-face pre{margin:0;font:10px Consolas,'Courier New',monospace;letter-spacing:0;white-space:pre;user-select:none}.case-controls{padding:18px;border:1px solid var(--line);border-radius:10px;background:#041109;min-width:0}.view-buttons{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:18px}.view-buttons button{font-size:11px;padding:6px 9px}.preview-switch{display:flex;justify-content:space-between;align-items:center;width:100%;gap:14px;text-align:left;padding:13px 0;background:none;border:0;color:#d6f5e3}.preview-switch strong{display:block;font-size:13px;font-weight:500}.preview-switch small{display:block;color:var(--dim);font-size:11px}.preview-switch i{width:32px;height:19px;border:1px solid #31503c;border-radius:99px;padding:3px;flex:none}.preview-switch i:after{content:'';display:block;width:11px;height:11px;border-radius:50%;background:#587260}.preview-switch[aria-checked=true] i{background:#0e3a22;border-color:var(--grn)}.preview-switch[aria-checked=true] i:after{background:var(--grn);margin-left:auto}.preview-slider{display:grid;grid-template-columns:70px 1fr;gap:12px;align-items:center;font-size:12px;margin:18px 0}.case-controls .hint{margin-top:14px}@media(max-width:850px){.case-composition{grid-template-columns:1fr}#pc3dwrap{height:360px}}
 
@@ -25,7 +25,7 @@ nav a{font-size:14px;font-weight:400;text-transform:none;letter-spacing:0;paddin
 .save-btn{padding:8px 12px}.zone-btn{font-weight:700;padding:13px 16px}.zone-btn small{display:block;font-size:12px;font-weight:400;margin:4px 0 0}.led-mode-btn{min-height:44px}
 .slider-row,.music-label,.music-route,.preview-slider{font-size:14px;line-height:1.5;font-weight:400}.slider-row label{font-weight:400;min-width:150px}.slider-val{font-size:14px;min-width:48px;font-weight:400}.music-control output{font-size:14px;font-weight:400}.music-mode strong{font-size:14px;line-height:1.5;font-weight:700}.music-mode small{font-size:13px;margin-top:6px}.music-mode span{padding:13px}
 .stage-caption{font-size:12px;line-height:1.5;gap:12px;flex-wrap:wrap}.view-buttons{flex-wrap:nowrap;gap:3px}.view-buttons button{font-size:12px;font-weight:400;padding:6px 8px;flex:1}.preview-switch strong{font-size:14px;font-weight:700;line-height:1.5}.preview-switch small{font-size:13px;margin-top:3px}.preview-slider{grid-template-columns:85px 1fr}
-.screen-item strong{font-size:14px;font-weight:700}.screen-item span{font-size:13px}.lyrics-search input{font-size:15px;line-height:1.5}#lyrics-current-line{font-size:18px;font-weight:400;line-height:1.5;letter-spacing:0;color:#b5f6cf}#lyrics-flag-btn{font-size:12px;font-weight:400;padding:7px 10px}.journal summary{font-size:13px;font-weight:400}#log{font-size:12px;line-height:1.8}footer{font-size:11px;line-height:1.7;gap:16px;letter-spacing:0;color:#88a391}
+.screen-item strong{font-size:14px;font-weight:700}.screen-item span{font-size:13px}.lyrics-search input{font-size:15px;line-height:1.5}#lyrics-current-line{font-size:18px;font-weight:400;line-height:1.5;letter-spacing:0;color:#b5f6cf}#lyrics-choose-btn{font-size:12px;font-weight:400;padding:7px 10px}.journal summary{font-size:13px;font-weight:400}#log{font-size:12px;line-height:1.8}footer{font-size:11px;line-height:1.7;gap:16px;letter-spacing:0;color:#88a391}
 .section-head{margin-bottom:20px}.lighting,.music-sync,.screen-settings,.lyrics-panel{padding:22px}.light-settings{gap:32px;padding-top:22px;margin-top:22px}.palettes{gap:24px}.music-settings{gap:22px;padding-top:22px;margin-top:22px}.footnote{padding:12px 20px}.now{padding:20px}.app{gap:16px}
 .case-composition{grid-template-columns:minmax(0,1.7fr) minmax(280px,1fr);align-items:stretch;margin-bottom:22px}.case-stage{height:100%}.light-top{display:block;height:100%}#pc3dwrap{height:500px}.case-controls{background:#06150d;padding:20px}.zone-group{margin-bottom:18px;gap:6px}.preview-palette{padding-top:16px;margin-top:16px;border-top:1px solid var(--line)}.preview-palette h3{font-size:13px;margin-bottom:10px}.preview-palette>[id]{display:flex!important;flex-wrap:wrap;gap:8px!important;margin-bottom:0!important}.preview-palette .color-swatch{width:24px;height:24px}
 /* Preserve the exact cell geometry used by the ASCII case. */
@@ -39,7 +39,7 @@ nav a{font-size:14px;font-weight:400;text-transform:none;letter-spacing:0;paddin
 header{padding:0;flex-wrap:nowrap;gap:14px;min-height:52px;flex:none}.brand{display:flex;align-items:center;gap:18px;white-space:nowrap}.brand .muted{margin:0}header .services{margin-left:auto;flex-wrap:nowrap}.shortcuts{font-size:13px;color:var(--dim);white-space:nowrap}
 .dashboard-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr);gap:16px;flex:1;min-height:0}.dashboard-column{display:flex;flex-direction:column;gap:16px;min-width:0;min-height:0}.pnl{min-width:0;min-height:0}
 .now{padding:14px 18px;gap:16px;flex-wrap:nowrap}.track{flex:1;min-width:0}.stats{gap:12px;flex:none}.stat small{font-size:12px}.stat b{font-size:13px}.level{width:64px}.eyebrow{margin:0;font-size:13px}.track h2{margin:0;font-size:20px}#overview{flex:none}
-.lyrics-panel{flex:1;display:flex;flex-direction:column;gap:12px;padding:18px 20px}.section-head{margin:0;gap:10px}.lyrics-panel .section-head>div{display:contents}.lyrics-panel .section-head .muted{font-size:13px}.lyrics-panel #lyrics-flag-btn{margin-left:auto;font-size:12px}#lyrics-current{flex:1;min-height:120px;display:flex;flex-direction:column;justify-content:center;gap:8px;overflow:hidden;padding:18px 22px}#lyrics-live-status{margin:0;font-size:13px}#lyrics-current-line{font-size:30px;line-height:1.4;margin:0;min-height:0}.lyrics-context{font-size:16px;min-height:0}.lyrics-search{margin:0;gap:8px}.lyrics-search input{font-size:14px;padding:8px}.lyrics-search button{font-size:13px;padding:8px}.slider-row{margin:0;gap:12px;min-height:28px;font-size:14px}.slider-row label{min-width:0;flex:0 0 180px}.slider-row input{min-width:0}.slider-val{font-size:14px}
+.lyrics-panel{flex:1;display:flex;flex-direction:column;gap:12px;padding:18px 20px}.section-head{margin:0;gap:10px}.lyrics-panel .section-head>div{display:contents}.lyrics-panel .section-head .muted{font-size:13px}.lyrics-panel #lyrics-choose-btn{margin-left:auto;font-size:12px}#lyrics-current{flex:1;min-height:120px;display:flex;flex-direction:column;justify-content:center;gap:8px;overflow:hidden;padding:18px 22px}#lyrics-live-status{margin:0;font-size:13px}#lyrics-current-line{font-size:30px;line-height:1.4;margin:0;min-height:0}.lyrics-context{font-size:16px;min-height:0}.lyrics-search{margin:0;gap:8px}.lyrics-search input{font-size:14px;padding:8px}.lyrics-search button{font-size:13px;padding:8px}.slider-row{margin:0;gap:12px;min-height:28px;font-size:14px}.slider-row label{min-width:0;flex:0 0 180px}.slider-row input{min-width:0}.slider-val{font-size:14px}
 .screen-settings{padding:16px 20px;flex:none;display:flex;flex-direction:column;gap:8px}.screen-settings .section-head{justify-content:flex-start;gap:12px}.screen-item{border:0;padding:0;align-items:center;gap:7px}.screen-item:last-child{margin-left:auto}.screen-item strong,.screen-item span{font-size:13px}.screen-settings .hint{font-size:13px;line-height:1.4}.screen-settings p:last-child{margin:0!important}
 .case-panel{padding:16px;flex:1;display:flex;flex-direction:column;gap:12px}.case-heading{display:flex;align-items:center;gap:10px}.view-buttons{margin:0 0 0 auto;gap:4px}.view-buttons button{font-size:13px;padding:6px 9px;flex:none}.case-stage{flex:1;min-height:200px;height:auto}.stage-caption{position:absolute;bottom:0;left:0;right:0;border:0;font-size:12px;pointer-events:none;background:linear-gradient(transparent,#020b06)}.case-options{display:flex;gap:6px}.preview-switch{width:auto;flex:1;padding:7px 8px;border:1px solid var(--line);border-radius:8px;gap:6px}.preview-switch strong{font-size:12px;font-weight:400}.preview-switch i{width:26px;height:17px;padding:2px}.preview-switch i:after{width:11px;height:11px}.case-sliders{display:grid;grid-template-columns:1fr 1fr;gap:20px}.preview-slider{margin:0;grid-template-columns:auto minmax(0,1fr);font-size:13px}
 .music-sync{flex:none;padding:18px 20px;display:flex;flex-direction:column;gap:12px}.music-heading{margin:0}.music-heading>div{display:flex;gap:12px;align-items:baseline}.music-heading p{font-size:13px}.music-modes{grid-template-columns:repeat(3,minmax(0,1fr))}.music-mode{min-width:0}.music-mode span{padding:9px 10px}.music-mode small{margin:3px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}.music-settings{border:0;margin:0;padding:0;gap:10px}.music-control{display:grid;grid-template-columns:180px minmax(0,1fr) 58px;align-items:center;gap:10px;position:relative;min-height:26px}.music-label{display:contents;font-size:14px}.music-label output{position:absolute;right:0;top:3px;width:58px;text-align:right}.music-control input{grid-column:2;margin:0}.music-routing{margin:0;padding-top:12px;border-top:1px solid var(--line)}.music-route{font-size:13px;min-width:0}.music-route select{font-size:12px;padding:7px 5px}.music-routes{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -142,17 +142,17 @@ header .services{margin-left:0;background:none;border:0;border-radius:0;padding:
 .kc{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border:1px solid #2b6b47;border-bottom-width:3px;color:#eafff2;font-size:11px;font-weight:700;background:#06140d}
 
 /* Boutons */
-.save-btn,.zone-btn,.led-mode-btn,.journal summary,.preview-switch,.music-mode span,.lyrics-panel #lyrics-flag-btn{position:relative;overflow:hidden;border:1px solid #1d4a31;border-radius:2px;background:#06140d;color:#c4ebd3;transition:border-color .12s,background .12s,color .12s,box-shadow .12s}
-.save-btn,.led-mode-btn,.journal summary,.lyrics-panel #lyrics-flag-btn{font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;text-overflow:ellipsis}
-.save-btn::after,.zone-btn::after,.led-mode-btn::after,.journal summary::after,.preview-switch::after,.music-mode span::after,#lyrics-flag-btn::after{content:"";position:absolute;right:0;bottom:0;border-style:solid;border-width:0 0 7px 7px;border-color:transparent transparent #2b6b47 transparent}
+.save-btn,.zone-btn,.led-mode-btn,.journal summary,.preview-switch,.music-mode span,.lyrics-panel #lyrics-choose-btn{position:relative;overflow:hidden;border:1px solid #1d4a31;border-radius:2px;background:#06140d;color:#c4ebd3;transition:border-color .12s,background .12s,color .12s,box-shadow .12s}
+.save-btn,.led-mode-btn,.journal summary,.lyrics-panel #lyrics-choose-btn{font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;text-overflow:ellipsis}
+.save-btn::after,.zone-btn::after,.led-mode-btn::after,.journal summary::after,.preview-switch::after,.music-mode span::after,#lyrics-choose-btn::after{content:"";position:absolute;right:0;bottom:0;border-style:solid;border-width:0 0 7px 7px;border-color:transparent transparent #2b6b47 transparent}
 .save-btn:hover,.zone-btn:hover,.led-mode-btn:hover,.journal summary:hover,.preview-switch:hover,.music-mode:hover span{border-color:var(--grn);color:#fff;box-shadow:inset 0 0 18px color-mix(in srgb,var(--grn) 28%,transparent),0 0 14px color-mix(in srgb,var(--grn) 30%,transparent)}
 .save-btn.active,.zone-btn.active,.led-mode-btn.active,#crt-toggle[aria-pressed=true],.journal[open] summary,.music-mode input:checked+span{background:var(--grn)!important;border-color:var(--grn)!important;color:#011006!important;font-weight:700;box-shadow:0 0 22px color-mix(in srgb,var(--grn) 55%,transparent),inset 0 0 12px rgba(255,255,255,.35)}
 .save-btn.active::after,.zone-btn.active::after,.led-mode-btn.active::after,#crt-toggle[aria-pressed=true]::after,.journal[open] summary::after,.music-mode input:checked+span::after{border-color:transparent transparent #011006 transparent}
 .journal summary,#crt-toggle{display:flex;align-items:center;height:38px;padding:0 13px;font-size:12px}
 .led-mode-btn{font-size:11px!important;text-align:center}
 .view-buttons{gap:5px}.view-buttons button{font-size:12px;padding:0 10px;height:32px}
-.lyrics-panel #lyrics-flag-btn{height:32px;padding:0 12px;font-size:11px;border-color:color-mix(in srgb,#ff4d4d 45%,#000)}
-.lyrics-panel #lyrics-flag-btn:hover{border-color:#ff4d4d;color:#fff;box-shadow:inset 0 0 18px #ff4d4d4d,0 0 14px #ff4d4d59}
+.lyrics-panel #lyrics-choose-btn{height:32px;padding:0 12px;font-size:11px}
+.lyrics-panel #lyrics-choose-btn:hover{border-color:var(--grn);color:#fff;box-shadow:inset 0 0 18px color-mix(in srgb,var(--grn) 28%,transparent),0 0 14px color-mix(in srgb,var(--grn) 30%,transparent)}
 
 /* Curseurs */
 input[type=range]{height:6px;border-radius:0;background:linear-gradient(90deg,var(--grn) var(--p,50%),#0f2a1c var(--p,50%));box-shadow:0 0 12px color-mix(in srgb,var(--grn) 35%,transparent)}
@@ -278,7 +278,54 @@ input::placeholder{color:#7fa390}
 .ambience-buttons{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px}.ambience-buttons kbd{display:block;font-size:9px;opacity:.65}
 .ambience-footer{margin-top:5px;font-size:9px;color:var(--dim)}
 @media(max-width:600px){.ambience-buttons{grid-template-columns:repeat(3,1fr)}}
-</style></head><body><div class="bg-floor" aria-hidden="true"><i></i></div><div class="crt-overlay"></div><main class="app"><header><div class="hz logo-mark" aria-hidden="true"></div><div class="brand"><h1 class="glitch" data-text="HEDJI’S DASHBOARD">HEDJI’S DASHBOARD</h1><p class="muted">Box Screen Control <span class="on">//</span> Écran 1920 × 462</p></div><div class="sweep" aria-hidden="true"><i></i></div><div class="services" role="status"><span class="service" id="conn">Connexion…</span><span class="service" id="hostip">Serveur local</span><span class="service mono" id="clock">--:--:--</span></div><span class="shortcuts"><span class="kc">F</span> visualisation <span class="kc">↑</span><span class="kc">↓</span> luminosité</span><details class="pnl journal"><summary>Journal</summary><div id="log"></div></details><button class="save-btn" id="crt-toggle" aria-pressed="false">Effet CRT</button></header><div class="dashboard-grid"><div class="dashboard-column"><section class="pnl hero-grid" id="overview" aria-label="Vue d’ensemble"><div class="preview"><span class="live-tag" aria-hidden="true">LIVE · APERÇU ÉCRAN</span><canvas id="screen" aria-label="Visualisation simplifiée du signal audio"></canvas></div><div class="progress" role="progressbar" aria-label="Progression du morceau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="pbar"></div></div><div class="cascade" title="Ordre automatique : les paroles d’abord, sinon la visualisation musicale, sinon l’ambiance au repos."><ol id="cascade-steps" aria-label="Affichage en cours"><li data-step="lyrics">Paroles</li><li class="arrow" aria-hidden="true">→</li><li data-step="audio">Visualisation</li><li class="arrow" aria-hidden="true">→</li><li data-step="idle">Ambiance au repos</li></ol><label class="force-viz" title="Afficher la visualisation musicale même quand il y a des paroles. Raccourci : F">Visu forcée <button id="force-viz-btn" class="save-btn">[ off ]</button></label></div><div class="now"><div class="track"><span class="eyebrow">Lecture en cours · <span id="play">En attente</span></span><h2 id="trackname">En attente d’un morceau</h2></div><div class="stats"><div class="stat"><small>Position</small><b class="mono" id="ptime">0:00</b></div><div class="stat"><small>Tempo</small><b><span id="bpm">—</span> <span class="unit">BPM</span> <span id="beatdot">·</span></b></div><div class="stat"><small>Niveau</small><div class="levels" role="img" aria-label="Niveau audio gauche et droite"><span>G</span><div class="level"><div id="vuL"></div></div><span>D</span><div class="level"><div id="vuR"></div></div></div></div></div></div><div hidden=""><canvas id="mini"></canvas><b id="modename">Automatique</b><span id="peak"></span><span id="uptime"></span><span id="screen-mode">Automatique</span><span id="cascade-state">En attente</span><span id="cascade-track"></span></div></section><section class="pnl lyrics-panel" aria-labelledby="lyrics-section"><div class="section-head"><div><h2 id="lyrics-section"><i aria-hidden="true">01</i>Paroles</h2></div><span class="muted">Source : <span id="lyrics-source-name">Automatique</span></span><button id="lyrics-flag-btn" title="Ignorer pour cette session. Maj + clic pour exclure définitivement.">Signaler des paroles incorrectes</button></div><div id="lyrics-current"><p id="lyrics-live-status" class="hint">Connexion aux paroles…</p><div id="lyrics-previous-line-3" class="lyrics-context far farther"></div><div id="lyrics-previous-line-2" class="lyrics-context far"></div><div id="lyrics-previous-line" class="lyrics-context"></div><div id="lyrics-current-line" role="status" aria-live="polite">En attente d’un morceau…</div><div id="lyrics-next-line" class="lyrics-context"></div><div id="lyrics-next-line-2" class="lyrics-context far"></div><div id="lyrics-next-line-3" class="lyrics-context far farther"></div></div><div id="lyrics-feedback" role="status" style="display:none"><span></span></div><div class="lyrics-search"><input id="lyrics-artist" aria-label="Artiste" placeholder="Artiste"><input id="lyrics-title" aria-label="Titre du morceau" placeholder="Titre du morceau"><button id="lyrics-search-btn" class="save-btn">Rechercher les paroles</button></div><div class="slider-row offset-row"><label for="lyrics-offset" title="Positif : retarder les paroles. Négatif : les avancer. Le réglage est mémorisé pour ce morceau.">Décalage</label><button type="button" class="save-btn" data-offset-step="-0.1" aria-label="Avancer les paroles de 0,1 seconde">− 0,1</button><input type="range" id="lyrics-offset" min="-60" max="60" step="0.1" value="0"><button type="button" class="save-btn" data-offset-step="0.1" aria-label="Retarder les paroles de 0,1 seconde">+ 0,1</button><span class="slider-val">0,0 s</span><button type="button" class="save-btn" id="lyrics-offset-reset">Remettre à 0</button></div></section></div><div class="dashboard-column"><section class="pnl case-panel" aria-label="Boîtier 3D"><div class="case-heading"><h2><i aria-hidden="true">02</i>Boîtier</h2><div class="view-buttons"><button class="save-btn" data-view="tq">3/4</button><button class="save-btn" data-view="face">Vitre</button><button class="save-btn" data-view="rear">Arrière</button><button class="save-btn" data-view="side">Côté</button><button class="save-btn" data-view="top">Dessus</button></div></div><div class="case-stage"><div id="pc3dwrap" role="img" aria-label="Boîtier Thermalright en ASCII 3D"><div id="pc3d"></div></div><div class="stage-caption"><span>Thermalright · 8 ventilateurs RGB</span><span>Glisser pour tourner</span></div></div><div class="case-options"><button class="preview-switch" data-case-option="auto" role="switch" aria-checked="true" title="Le boîtier tourne doucement"><span><strong>Rotation auto</strong></span><i></i></button><button class="preview-switch" data-case-option="explode" role="switch" aria-checked="false" title="Écarter les panneaux"><span><strong>Vue éclatée</strong></span><i></i></button><button class="preview-switch" data-case-option="interior" role="switch" aria-checked="true" title="Carte mère, ventilateurs et GPU"><span><strong>Intérieur visible</strong></span><i></i></button></div><div class="case-sliders"><label class="preview-slider">Zoom<input type="range" id="case-zoom" min=".35" max="1.1" step=".01" value=".64"></label><label class="preview-slider">Animation<input type="range" id="case-speed" min="0" max="10" step="1" value="5"></label></div></section>
+
+/* Menu de choix des paroles */
+#lyrics-menu{width:min(760px,94vw);max-height:86vh;padding:0;border:1px solid var(--grn);border-radius:0;background:#030b07;color:#d6f5e3;box-shadow:0 0 40px color-mix(in srgb,var(--grn) 30%,transparent);overflow:hidden}
+#lyrics-menu[open]{display:flex;flex-direction:column}
+#lyrics-menu::backdrop{background:#000a05cc}
+.lm-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:18px 20px 10px;border-bottom:1px solid var(--line)}
+.lm-head h3{margin:4px 0 0;font-size:15px;letter-spacing:.06em;text-transform:none;color:#eafff2}.lm-head h3::after{display:none}
+.lm-head .save-btn,.lm-foot .save-btn{height:34px;padding:0 12px}
+#lyrics-menu-status{margin:0;padding:10px 20px;font-size:13px}
+.lm-list{list-style:none;margin:0;padding:0 20px;overflow:auto;flex:1;display:grid;gap:8px;align-content:start}
+.lm-item{width:100%;text-align:left;display:grid;gap:6px;padding:12px 14px;border:1px solid var(--line);border-radius:0;background:#06140d;color:#d6f5e3}
+.lm-item:hover,.lm-item:focus-visible{border-color:var(--grn);box-shadow:inset 0 0 18px color-mix(in srgb,var(--grn) 22%,transparent)}
+.lm-item.current{border-color:color-mix(in srgb,var(--grn) 60%,#000)}
+.lm-tags{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.lm-tag{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;padding:2px 7px;border:1px solid #2b6b47;color:#bfe9d0}
+.lm-tag.sync{background:var(--grn);border-color:var(--grn);color:#011006}
+.lm-tag.plain{color:var(--amb);border-color:color-mix(in srgb,var(--amb) 50%,#000)}
+.lm-tag.now{color:#011006;background:#eafff2;border-color:#eafff2}
+.lm-tag.best{color:#011006;background:var(--amb);border-color:var(--amb)}
+.lm-meta{font-size:12px;color:var(--dim)}
+.lm-meta .ok{color:var(--grn)}.lm-meta .warn{color:var(--amb)}
+.lm-preview{font-size:13px;line-height:1.5;color:#9cc0ab;white-space:pre-line;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical}
+.lm-foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--line);margin-top:12px}
+
+/* Valorant (valorant_source.py) */
+.valorant-panel{padding:16px;flex:none;display:flex;flex-direction:column;gap:12px;--val:#ff4655}
+.val-head{display:flex;align-items:center;gap:10px}.val-head h2{margin-right:auto}
+.val-status{font-size:12px;color:var(--dim);white-space:nowrap}.val-status.live{color:var(--val)}.val-status.menu{color:var(--grn)}
+.val-body{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.val-rank,.val-live{border:1px solid var(--line);border-radius:8px;background:#020b06;padding:12px;min-width:0}
+.val-rank{display:flex;align-items:center;gap:16px}.val-rank>div{flex:1;min-width:0}
+.val-diamond{width:26px;height:26px;flex:none;margin-left:4px;transform:rotate(45deg);background:var(--tier,#8a8f99);box-shadow:inset 0 0 0 7px #020b06,0 0 0 2px var(--tier,#8a8f99)}
+#val-tier{display:block;font-size:16px;color:var(--tier,#d6f5e3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.val-rrbar{height:6px;background:#12301f;border-radius:3px;overflow:hidden;margin:6px 0 4px}.val-rrbar i{display:block;height:100%;width:0;background:var(--tier,#8a8f99);transition:width .4s}
+#val-rr{font-size:12px;color:var(--dim)}#val-rr .up{color:var(--grn)}#val-rr .down{color:var(--val)}
+.val-live{display:grid;gap:3px;align-content:center}
+#val-live-main{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#val-live-main .ally{color:var(--grn)}#val-live-main .enemy{color:var(--val)}
+#val-live-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.val-matches{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.val-matches li{display:grid;grid-template-columns:22px minmax(0,1fr) auto auto;gap:10px;align-items:center;font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#040d08}
+.val-matches li.empty{display:block;color:var(--dim)}
+.val-matches .res{font-weight:700;text-align:center;border-radius:3px;font-size:11px;color:#011006;background:var(--dim)}.val-matches .res.win{background:var(--grn)}.val-matches .res.loss{background:var(--val);color:#fff}
+.val-matches .where{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.val-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.val-panel-modes{display:flex;align-items:center;gap:4px;flex-wrap:wrap}.val-panel-modes .save-btn{font-size:11px;padding:5px 9px}
+#val-source{font-size:11px}
+@media(min-width:1101px) and (max-height:900px){.val-matches li:nth-child(n+4){display:none}}
+</style></head><body><div class="bg-floor" aria-hidden="true"><i></i></div><div class="crt-overlay"></div><main class="app"><header><div class="hz logo-mark" aria-hidden="true"></div><div class="brand"><h1 class="glitch" data-text="HEDJI’S DASHBOARD">HEDJI’S DASHBOARD</h1><p class="muted">Box Screen Control <span class="on">//</span> Écran 1920 × 462</p></div><div class="sweep" aria-hidden="true"><i></i></div><div class="services" role="status"><span class="service" id="conn">Connexion…</span><span class="service" id="hostip">Serveur local</span><span class="service mono" id="clock">--:--:--</span></div><span class="shortcuts"><span class="kc">F</span> visualisation <span class="kc">↑</span><span class="kc">↓</span> luminosité</span><details class="pnl journal"><summary>Journal</summary><div id="log"></div></details><button class="save-btn" id="crt-toggle" aria-pressed="false">Effet CRT</button></header><div class="dashboard-grid"><div class="dashboard-column"><section class="pnl hero-grid" id="overview" aria-label="Vue d’ensemble"><div class="preview"><span class="live-tag" aria-hidden="true">LIVE · APERÇU ÉCRAN</span><canvas id="screen" aria-label="Visualisation simplifiée du signal audio"></canvas></div><div class="progress" role="progressbar" aria-label="Progression du morceau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="pbar"></div></div><div class="cascade" title="Ordre automatique : les paroles d’abord, puis Valorant si le jeu est ouvert, sinon la visualisation musicale, sinon l’ambiance au repos."><ol id="cascade-steps" aria-label="Affichage en cours"><li data-step="lyrics">Paroles</li><li class="arrow" aria-hidden="true">→</li><li data-step="valorant">Valorant</li><li class="arrow" aria-hidden="true">→</li><li data-step="audio">Visualisation</li><li class="arrow" aria-hidden="true">→</li><li data-step="idle">Ambiance au repos</li></ol><label class="force-viz" title="Afficher la visualisation musicale même quand il y a des paroles. Raccourci : F">Visu forcée <button id="force-viz-btn" class="save-btn">[ off ]</button></label></div><div class="now"><div class="track"><span class="eyebrow">Lecture en cours · <span id="play">En attente</span></span><h2 id="trackname">En attente d’un morceau</h2></div><div class="stats"><div class="stat"><small>Position</small><b class="mono" id="ptime">0:00</b></div><div class="stat"><small>Tempo</small><b><span id="bpm">—</span> <span class="unit">BPM</span> <span id="beatdot">·</span></b></div><div class="stat"><small>Niveau</small><div class="levels" role="img" aria-label="Niveau audio gauche et droite"><span>G</span><div class="level"><div id="vuL"></div></div><span>D</span><div class="level"><div id="vuR"></div></div></div></div></div></div><div hidden=""><canvas id="mini"></canvas><b id="modename">Automatique</b><span id="peak"></span><span id="uptime"></span><span id="screen-mode">Automatique</span><span id="cascade-state">En attente</span><span id="cascade-track"></span></div></section><section class="pnl lyrics-panel" aria-labelledby="lyrics-section"><div class="section-head"><div><h2 id="lyrics-section"><i aria-hidden="true">01</i>Paroles</h2></div><span class="muted">Source : <span id="lyrics-source-name">Automatique</span></span><button id="lyrics-choose-btn" aria-haspopup="dialog" title="Le meilleur choix s’affiche automatiquement. Ce menu montre les autres versions si tu veux en prendre une autre.">Choisir les paroles</button></div><div id="lyrics-current"><p id="lyrics-live-status" class="hint">Connexion aux paroles…</p><div id="lyrics-previous-line-3" class="lyrics-context far farther"></div><div id="lyrics-previous-line-2" class="lyrics-context far"></div><div id="lyrics-previous-line" class="lyrics-context"></div><div id="lyrics-current-line" role="status" aria-live="polite">En attente d’un morceau…</div><div id="lyrics-next-line" class="lyrics-context"></div><div id="lyrics-next-line-2" class="lyrics-context far"></div><div id="lyrics-next-line-3" class="lyrics-context far farther"></div></div><div id="lyrics-feedback" role="status" style="display:none"><span></span></div><div class="lyrics-search"><input id="lyrics-artist" aria-label="Artiste" placeholder="Artiste"><input id="lyrics-title" aria-label="Titre du morceau" placeholder="Titre du morceau"><button id="lyrics-search-btn" class="save-btn">Rechercher les paroles</button></div><div class="slider-row offset-row"><label for="lyrics-offset" title="Positif : retarder les paroles. Négatif : les avancer. Le réglage est mémorisé pour ce morceau.">Décalage</label><button type="button" class="save-btn" data-offset-step="-0.1" aria-label="Avancer les paroles de 0,1 seconde">− 0,1</button><input type="range" id="lyrics-offset" min="-60" max="60" step="0.1" value="0"><button type="button" class="save-btn" data-offset-step="0.1" aria-label="Retarder les paroles de 0,1 seconde">+ 0,1</button><span class="slider-val">0,0 s</span><button type="button" class="save-btn" id="lyrics-offset-reset">Remettre à 0</button></div><dialog id="lyrics-menu" aria-labelledby="lyrics-menu-title"><div class="lm-head"><div><span class="eyebrow">Choisir les paroles</span><h3 id="lyrics-menu-title">Morceau en cours</h3></div><button type="button" class="save-btn" id="lyrics-menu-close">Fermer</button></div><p id="lyrics-menu-status" class="hint" role="status"></p><ul id="lyrics-menu-list" class="lm-list"></ul><div class="lm-foot"><button type="button" class="save-btn" id="lyrics-menu-reset" hidden>Revenir au choix automatique</button><button type="button" class="save-btn" id="lyrics-menu-refresh">Relancer la recherche</button></div></dialog></section></div><div class="dashboard-column"><section class="pnl case-panel" aria-label="Boîtier 3D"><div class="case-heading"><h2><i aria-hidden="true">02</i>Boîtier</h2><div class="view-buttons"><button class="save-btn" data-view="tq">3/4</button><button class="save-btn" data-view="face">Vitre</button><button class="save-btn" data-view="rear">Arrière</button><button class="save-btn" data-view="side">Côté</button><button class="save-btn" data-view="top">Dessus</button></div></div><div class="case-stage"><div id="pc3dwrap" role="img" aria-label="Boîtier Thermalright en ASCII 3D"><div id="pc3d"></div></div><div class="stage-caption"><span>Thermalright · 8 ventilateurs RGB</span><span>Glisser pour tourner</span></div></div><div class="case-options"><button class="preview-switch" data-case-option="auto" role="switch" aria-checked="true" title="Le boîtier tourne doucement"><span><strong>Rotation auto</strong></span><i></i></button><button class="preview-switch" data-case-option="explode" role="switch" aria-checked="false" title="Écarter les panneaux"><span><strong>Vue éclatée</strong></span><i></i></button><button class="preview-switch" data-case-option="interior" role="switch" aria-checked="true" title="Carte mère, ventilateurs et GPU"><span><strong>Intérieur visible</strong></span><i></i></button></div><div class="case-sliders"><label class="preview-slider">Zoom<input type="range" id="case-zoom" min=".35" max="1.1" step=".01" value=".64"></label><label class="preview-slider">Animation<input type="range" id="case-speed" min="0" max="10" step="1" value="5"></label></div></section><section class="pnl valorant-panel" id="valorant" aria-labelledby="valorant-section"><div class="val-head"><h2 id="valorant-section"><i aria-hidden="true">04</i>Valorant</h2><span class="val-status" id="val-status" role="status">○ Jeu fermé</span><button class="save-btn" id="val-refresh" title="Recharger rang et matchs depuis HenrikDev">Actualiser</button></div><div class="val-body"><div class="val-rank"><span class="val-diamond" aria-hidden="true"></span><div><b id="val-tier">Rang inconnu</b><div class="val-rrbar"><i id="val-rrfill"></i></div><span class="mono" id="val-rr"></span></div></div><div class="val-live"><span class="eyebrow">En direct</span><b id="val-live-main">Jeu fermé</b><span class="muted" id="val-live-sub"></span></div></div><ol class="val-matches" id="val-matches" aria-label="Derniers matchs"></ol><div class="val-foot"><div class="val-panel-modes" role="group" aria-label="Place de Valorant sur l’écran"><span class="muted">Écran :</span><button class="save-btn" data-val-panel="after_lyrics" aria-pressed="false" title="Paroles d’abord, puis Valorant quand le jeu est ouvert">Après les paroles</button><button class="save-btn" data-val-panel="priority" aria-pressed="false" title="Valorant passe avant les paroles quand le jeu est ouvert">Prioritaire</button><button class="save-btn" data-val-panel="off" aria-pressed="false" title="Jamais sur l’écran physique">Off</button></div><span class="hint" id="val-source"></span></div></section>
 </div><div class="dashboard-column"><section class="pnl lighting" id="lighting"><div class="lighting-head"><h2><i aria-hidden="true">03</i>Éclairage</h2><div class="slider-row"><label for="bright" title="S’applique à toutes les zones. Raccourci : ↑ ↓">Luminosité générale</label><input type="range" id="bright" min="0" max="100" value="80"><span class="slider-val">80</span></div></div>
 <div class="lighting-modes"><h3>Mode d’éclairage</h3><div class="music-modes" role="radiogroup" aria-label="Mode de synchronisation">
 <label class="music-mode"><input type="radio" name="music-mode" data-rhythm-key="rhythm_mode" value="impacts" checked="" onchange="changeRhythm(this)"><span title="Toutes les zones frappent au rythme des kicks."><strong>Ensemble</strong><small>Toutes les zones sur les kicks</small></span></label>
@@ -294,7 +341,7 @@ input::placeholder{color:#7fa390}
 <label class="music-route">Son à suivre<select data-rhythm-key="case_rhythm" onchange="changeRhythm(this)"><option value="kick">Kicks · graves</option><option value="snare" selected="">Caisse claire · médiums</option><option value="high">Charleys · aigus</option></select></label>
 <label class="music-route">Son à suivre<select data-rhythm-key="keyboard_rhythm" onchange="changeRhythm(this)"><option value="kick">Kicks · graves</option><option value="snare">Caisse claire · médiums</option><option value="high" selected="">Charleys · aigus</option></select></label></div>
 <label id="keyboard-floor" hidden class="music-control" title="Les touches restent éclairées pendant les silences. À 100 %, éclairage constant. Le mode éteint reste prioritaire."><span class="music-label">Luminosité au repos<output></output></span><input type="range" data-rhythm-key="keyboard_min_brightness" min="0" max="1" step="0.05" value="0.3" oninput="showRhythmValue(this)" onchange="changeRhythm(this)"></label>
-<p class="hint" id="zone-behavior"></p><div id="classic-effects"><h3>Effet</h3><div class="led-mode-grid" role="group" aria-label="Effet lumineux"><button class="led-mode-btn" data-led-mode="sync_fans" hidden="" aria-pressed="false">Comme les ventilateurs</button><button class="led-mode-btn" data-led-mode="off" aria-pressed="false">Éteint</button><button class="led-mode-btn" data-led-mode="static" aria-pressed="false">Fixe</button><button class="led-mode-btn" data-led-mode="breathe" aria-pressed="false">Respiration</button><button class="led-mode-btn" data-led-mode="wave" aria-pressed="false">Vague</button><button class="led-mode-btn" data-led-mode="gradient" aria-pressed="false">Dégradé</button><button class="led-mode-btn" data-led-mode="dual" aria-pressed="false">Deux couleurs</button><button class="led-mode-btn" data-led-mode="comet" aria-pressed="false">Comète</button><button class="led-mode-btn" data-led-mode="spin" aria-pressed="false">Rotation</button><button class="led-mode-btn" data-led-mode="rainbow" aria-pressed="false">Arc-en-ciel</button><button class="led-mode-btn" data-led-mode="beat" aria-pressed="false">Rythme</button><button class="led-mode-btn" data-led-mode="beat_pulse" aria-pressed="false">Impulsions</button></div><div class="slider-row"><label for="speed">Vitesse de l’effet</label><input type="range" id="speed" min="0" max="100" value="62"><span class="slider-val">62</span></div><div class="slider-row"><label for="decay" title="Durée de traîne de la lumière du boîtier">Persistance</label><input type="range" id="decay" min="5" max="100" value="35"><span class="slider-val">35</span></div></div><div class="palettes"><div class="palette"><h3>Boîtier · couleur principale</h3><div id="palette-case" style="display:flex; gap:8px; flex-wrap:wrap;">
+<p class="hint" id="zone-behavior"></p><div id="classic-effects"><h3>Effet</h3><div class="led-mode-grid" role="group" aria-label="Effet lumineux"><button class="led-mode-btn" data-led-mode="sync_fans" hidden="" aria-pressed="false">Comme les ventilateurs</button><button class="led-mode-btn" data-led-mode="off" aria-pressed="false">Éteint</button><button class="led-mode-btn" data-led-mode="static" aria-pressed="false">Fixe</button><button class="led-mode-btn" data-led-mode="breathe" aria-pressed="false">Respiration</button><button class="led-mode-btn" data-led-mode="wave" aria-pressed="false">Vague</button><button class="led-mode-btn" data-led-mode="gradient" aria-pressed="false">Dégradé</button><button class="led-mode-btn" data-led-mode="dual" aria-pressed="false">Deux couleurs</button><button class="led-mode-btn" data-led-mode="comet" aria-pressed="false">Comète</button><button class="led-mode-btn" data-led-mode="spin" aria-pressed="false">Rotation</button><button class="led-mode-btn" data-led-mode="rainbow" aria-pressed="false">Arc-en-ciel</button><button class="led-mode-btn" data-led-mode="beat" aria-pressed="false">Rythme</button><button class="led-mode-btn" data-led-mode="beat_pulse" aria-pressed="false">Impulsions</button></div><div class="slider-row"><label for="speed">Vitesse de l’effet</label><input type="range" id="speed" min="0" max="100" value="62"><span class="slider-val">62</span></div><div class="slider-row"><label for="decay" title="Durée de la traîne après chaque coup, en mode Rythme (boîtier et ventilateurs)">Persistance</label><input type="range" id="decay" min="5" max="100" value="35"><span class="slider-val">35</span></div></div><div class="palettes"><div class="palette"><h3>Boîtier · couleur principale</h3><div id="palette-case" style="display:flex; gap:8px; flex-wrap:wrap;">
             <span class="color-swatch" data-zone="case" style="background:#b428ff; box-shadow:0 0 9px #b428ff;" data-color="violet"></span>
             <span class="color-swatch" data-zone="case" style="background:#00bcd4;" data-color="cyan"></span>
             <span class="color-swatch" data-zone="case" style="background:#2196f3;" data-color="blue"></span>
@@ -1050,7 +1097,9 @@ function drawAudioViz() {
   // Audio viz is active when mode is 'audio' OR hud is 'audio_viz'
   const isAudioMode = state.mode === 'audio' || state.hud === 'audio_viz';
 
-  if (state.cascade === 'lyrics') {
+  if (state.cascade === 'valorant') {
+    drawValorantPreview(sctx, sw, sh);
+  } else if (state.cascade === 'lyrics') {
     drawLiveLyrics(sctx, sw, sh);
   } else if (state.cascade === 'idle' || (!isAudioMode && state.mode === 'ascii_vhs')) {
     drawAsciiVhs(sctx, sw, sh);
@@ -1144,8 +1193,8 @@ function updateRhythmLayout(mode) {
   if (mode === 'split') {
     behavior = 'Cette zone pulse sur le son choisi avec sa couleur principale. La synchro remplace son effet.';
   } else if (mode === 'legacy') {
-    behavior = zone === 'fan'
-      ? 'Les ventilateurs suivent l’effet choisi. En mode Rythme, les deux couleurs alternent à chaque battement.'
+    behavior = state.led?.[zone + '_mode'] === 'beat' && zone !== 'keyboard'
+      ? 'Rythme : couleur principale sur les kicks, couleur secondaire sur la caisse claire, léger scintillement sur les charleys. Persistance règle la traîne. Au silence, la zone respire.'
       : 'Cette zone utilise l’effet sélectionné.';
   }
   if (state.led?.[zone + '_mode'] === 'off') behavior = classic ? 'Cette zone est éteinte.' : 'Zone éteinte. Choisis un effet dans Effets classiques pour la rallumer.';
@@ -1183,7 +1232,7 @@ async function poll() {
     state = { ...state, ...data };
 
     // Update UI — bandeau cascade
-    const cascadeLabels = { lyrics: '♪ lyrics', audio: '≋ audio viz', idle: '▒ ascii' };
+    const cascadeLabels = { lyrics: '♪ lyrics', valorant: '◆ valorant', audio: '≋ audio viz', idle: '▒ ascii' };
     const csEl = document.getElementById('cascade-state');
     if (csEl) csEl.textContent = cascadeLabels[state.cascade] || '--';
     const ctEl = document.getElementById('cascade-track');
@@ -1194,7 +1243,7 @@ async function poll() {
     updateLeds();
     updateConnection(true);
     updateTransport();
-    document.getElementById('modename').textContent = ({lyrics:'Paroles',audio:'Visualisation',idle:'Ambiance'})[state.cascade] || 'Automatique';
+    document.getElementById('modename').textContent = ({lyrics:'Paroles',valorant:'Valorant',audio:'Visualisation',idle:'Ambiance'})[state.cascade] || 'Automatique';
     document.querySelectorAll('#cascade-steps [data-step]').forEach(step => {
       const on = step.dataset.step === state.cascade;
       step.classList.toggle('active', on);
@@ -1350,7 +1399,7 @@ function updateLeds() {
   });
   updateRhythmLayout(state.led.rhythm_mode || 'impacts');
   document.querySelectorAll('.palette').forEach(p => {const z=p.querySelector('[data-zone]')?.dataset.zone;p.hidden=ledZoneTarget==='keyboard' ? !['keyboard','keyboard2'].includes(z) : ledZoneTarget==='case' ? !['case','case2'].includes(z) : !['fans','fans2'].includes(z);});
-  document.getElementById('decay').closest('.slider-row').hidden=ledZoneTarget!=='case';
+  document.getElementById('decay').closest('.slider-row').hidden=!(ledZoneTarget==='case' || ledZoneTarget==='both' || (ledZoneTarget==='fans' && state.led.fan_mode==='beat'));
   const mixed = ledZoneTarget === 'both' && state.led.fan_mode !== state.led.case_mode;
   document.querySelectorAll('.led-mode-btn').forEach(btn => {
     const mode = state.led[ledZoneTarget === 'fans' ? 'fan_mode' : ledZoneTarget === 'keyboard' ? 'keyboard_mode' : 'case_mode'];
@@ -1642,88 +1691,117 @@ document.querySelectorAll('.slider-row input').forEach(input => {
 
 let currentLyricsInfo = {artist: '', title: '', source: ''};
 
-// Recherche manuelle de lyrics
-document.getElementById('lyrics-search-btn')?.addEventListener('click', async () => {
-  const artist = document.getElementById('lyrics-artist').value;
-  const title = document.getElementById('lyrics-title').value;
+// Menu de choix des paroles
+const lyricsMenu = document.getElementById('lyrics-menu');
+const lyricsMenuList = document.getElementById('lyrics-menu-list');
+const lyricsMenuStatus = document.getElementById('lyrics-menu-status');
+const lyricsMenuReset = document.getElementById('lyrics-menu-reset');
+let lyricsMenuToken = null, lyricsMenuQuery = {}, lyricsMenuBusy = false;
+const fmtDur = sec => { sec = Math.round(Number(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); };
+function lmEl(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
 
-  if (!artist || !title) {
-    log('[LYRICS] Error: artist and title required');
-    return;
-  }
-
-  log(`[LYRICS] Manual search: ${artist} - ${title}`);
-
-  try {
-    const res = await fetch('/api/lyrics-manual-search', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({artist, title})
-    });
-
-    const data = await res.json();
-
-    if (data.error) {
-      log(`[LYRICS] ${data.error}`);
-    } else {
-      log(`[LYRICS] Found: ${data.source} (score: ${Math.round(data.score)})`);
-      document.getElementById('lyrics-source-name').textContent = data.source;
-
-      // Afficher les premières lignes dans l'aperçu
-      if (data.lyrics && data.lyrics.synced && data.lyrics.synced.length > 0) {
-        const preview = document.getElementById('lyrics-current-line');
-        if (preview) {
-          preview.textContent = '▶ ' + data.lyrics.synced[0][1];
-        }
+function renderLyricsCandidates(data) {
+  lyricsMenuList.replaceChildren();
+  lyricsMenuToken = data.token;
+  document.getElementById('lyrics-menu-title').textContent = `${data.artist} - ${data.title}`;
+  lyricsMenuReset.hidden = !data.chosen;
+  const list = data.candidates || [];
+  const searched = data.searched && (data.searched.artist !== data.artist || data.searched.title !== data.title)
+    ? ` pour « ${data.searched.artist} - ${data.searched.title} »` : '';
+  lyricsMenuStatus.textContent = list.length
+    ? `${list.length} version${list.length > 1 ? 's' : ''} trouvée${list.length > 1 ? 's' : ''}${searched}. Le meilleur choix s’affiche tout seul. Si ce n’est pas la bonne, clique sur une autre : elle sera gardée pour ce morceau.`
+    : `Aucune version trouvée${searched}. Essaie une autre orthographe dans les champs Artiste et Titre.`;
+  for (const c of list) {
+    const li = lmEl('li'), btn = lmEl('button', 'lm-item' + (c.current ? ' current' : ''));
+    btn.type = 'button';
+    const tags = lmEl('div', 'lm-tags');
+    if (c.best) tags.append(lmEl('span', 'lm-tag best', 'Meilleur choix'));
+    if (c.current) tags.append(lmEl('span', 'lm-tag now', 'Affichées'));
+    tags.append(lmEl('span', 'lm-tag', c.source));
+    tags.append(lmEl('span', 'lm-tag ' + (c.kind === 'sync' ? 'sync' : 'plain'), c.kind === 'sync' ? 'Synchronisées' : 'Texte seul'));
+    const meta = lmEl('div', 'lm-meta');
+    const name = [c.artist, c.track].filter(Boolean).join(' - ');
+    const bits = [name, c.album, `${c.lines} lignes`].filter(Boolean);
+    meta.append(bits.join(' · '));
+    if (c.duration) {
+      meta.append(' · ' + fmtDur(c.duration));
+      if (data.media_duration) {
+        const diff = Math.round(c.duration - data.media_duration);
+        meta.append(Math.abs(diff) <= 3 ? lmEl('span', 'ok', ' (même durée que le morceau)')
+          : lmEl('span', 'warn', ` (écart ${diff > 0 ? '+' : '−'}${Math.abs(diff)} s)`));
       }
     }
-  } catch (e) {
-    log(`[LYRICS] Error: ${e}`);
+    btn.append(tags, meta, lmEl('div', 'lm-preview', (c.preview || []).join('\n')));
+    btn.addEventListener('click', () => chooseLyrics(c));
+    li.append(btn);
+    lyricsMenuList.append(li);
   }
+}
+
+async function loadLyricsCandidates(query = lyricsMenuQuery) {
+  if (lyricsMenuBusy) return;
+  lyricsMenuBusy = true;
+  lyricsMenuQuery = query;
+  lyricsMenuList.replaceChildren();
+  lyricsMenuReset.hidden = true;
+  lyricsMenuStatus.textContent = 'Recherche de toutes les versions… (jusqu’à 25 s)';
+  try {
+    const res = await fetch('/api/lyrics-candidates', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(query)});
+    const data = await res.json();
+    if (!data.ok) { lyricsMenuStatus.textContent = data.error || 'Recherche impossible.'; return; }
+    renderLyricsCandidates(data);
+  } catch (e) {
+    lyricsMenuStatus.textContent = 'Erreur de connexion au serveur.';
+    log(`[LYRICS] menu: ${e}`);
+  } finally { lyricsMenuBusy = false; }
+}
+
+async function chooseLyrics(c) {
+  if (lyricsMenuBusy) return;
+  lyricsMenuBusy = true;
+  lyricsMenuList.querySelectorAll('button').forEach(b => b.disabled = true);
+  lyricsMenuStatus.textContent = 'Application des paroles…';
+  try {
+    const res = await fetch('/api/lyrics-choose', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token: lyricsMenuToken, id: c.id})});
+    const data = await res.json();
+    if (!data.ok) { lyricsMenuStatus.textContent = data.error || 'Choix impossible.'; lyricsMenuList.querySelectorAll('button').forEach(b => b.disabled = false); return; }
+    log(`[LYRICS] paroles choisies : ${c.source}`);
+    lyricsMenuStatus.textContent = 'Paroles appliquées et gardées pour ce morceau.';
+    setTimeout(() => lyricsMenu.close(), 700);
+  } catch (e) {
+    lyricsMenuStatus.textContent = 'Erreur de connexion au serveur.';
+    lyricsMenuList.querySelectorAll('button').forEach(b => b.disabled = false);
+  } finally { lyricsMenuBusy = false; }
+}
+
+function openLyricsMenu(query = {}) {
+  if (!lyricsMenu.open) lyricsMenu.showModal();
+  loadLyricsCandidates(query);
+}
+
+document.getElementById('lyrics-choose-btn')?.addEventListener('click', () => openLyricsMenu({}));
+document.getElementById('lyrics-menu-close').addEventListener('click', () => lyricsMenu.close());
+document.getElementById('lyrics-menu-refresh').addEventListener('click', () => loadLyricsCandidates());
+lyricsMenu.addEventListener('click', e => { if (e.target === lyricsMenu) lyricsMenu.close(); });
+lyricsMenuReset.addEventListener('click', async () => {
+  if (lyricsMenuBusy) return;
+  lyricsMenuBusy = true;
+  lyricsMenuReset.disabled = true;
+  lyricsMenuStatus.textContent = 'Retour à la recherche automatique…';
+  try {
+    const data = await (await fetch('/api/lyrics-choice-reset', {method: 'POST'})).json();
+    lyricsMenuStatus.textContent = data.ok ? `Choix automatique rétabli (${data.source}).` : (data.error || 'Impossible.');
+    if (data.ok) { lyricsMenuReset.hidden = true; setTimeout(() => lyricsMenu.close(), 900); }
+  } catch (e) {
+    lyricsMenuStatus.textContent = 'Erreur de connexion au serveur.';
+  } finally { lyricsMenuBusy = false; lyricsMenuReset.disabled = false; }
 });
 
-// Marquer comme incorrect (temporaire ou permanent)
-document.getElementById('lyrics-flag-btn')?.addEventListener('click', async (e) => {
-  const {artist, title, source} = currentLyricsInfo;
-
-  if (!artist || !title) {
-    log('[LYRICS] Error: no active lyrics to flag');
-    return;
-  }
-
-  // Shift+clic = permanent, clic simple = temporaire
-  const isPermanent = e.shiftKey;
-  const endpoint = isPermanent ? '/api/lyrics-flag-perm' : '/api/lyrics-flag-temp';
-
-  try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        artist,
-        title,
-        source: source || 'unknown',
-        reason: isPermanent ? 'user_blacklisted' : 'user_skip'
-      })
-    });
-
-    if (res.ok) {
-      const feedback = isPermanent ? 'Blacklisted (permanent)' : 'Skipped (session)';
-      log(`[LYRICS] ${feedback} for ${artist} - ${title}`);
-
-      // Afficher feedback visuel
-      const fb = document.getElementById('lyrics-feedback');
-      if (fb) {
-        fb.querySelector('span').textContent = isPermanent
-          ? '✓ Blacklisted (permanent)'
-          : '✓ Skipped (session) - Shift+clic pour permanent';
-        fb.style.display = 'block';
-        setTimeout(() => fb.style.display = 'none', 3000);
-      }
-    }
-  } catch (err) {
-    log(`[LYRICS] Error: ${err}`);
-  }
+// Recherche sous un autre nom : ouvre le menu avec les champs Artiste / Titre
+document.getElementById('lyrics-search-btn')?.addEventListener('click', () => {
+  const artist = document.getElementById('lyrics-artist').value.trim();
+  const title = document.getElementById('lyrics-title').value.trim();
+  openLyricsMenu(artist || title ? {artist, title} : {});
 });
 
 // Note: lyrics_position events sont gérés dans le code SSE existant (ligne 1835)
@@ -1747,7 +1825,7 @@ updateClock();
 // \u2500\u2500 Keyboard Shortcuts \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 window.addEventListener('keydown', (e) => {
   // Ne pas intercepter la frappe dans les champs de saisie
-  if (e.target.closest('input, select, textarea, button, a, summary, [contenteditable]')) return;
+  if (e.target.closest('input, select, textarea, button, a, summary, [contenteditable], dialog')) return;
 
   const k = e.key;
 
@@ -1886,6 +1964,170 @@ pollLiveLyrics();
 setInterval(pollLiveLyrics, 1000);
 poll();
 setInterval(poll, 500);
+
+// ── Valorant (client local + HenrikDev) ──────────────────────────────────────
+let valState = null;
+function valEl(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+const VAL_RESULTS = { win: ['V', 'win', 'Victoire'], loss: ['D', 'loss', 'Défaite'], draw: ['N', 'draw', 'Égalité'] };
+function renderValorant(v) {
+  const live = v.live || {};
+  const st = document.getElementById('val-status');
+  const labels = { INGAME: '● En partie', PREGAME: '● Sélection d’agent', MENUS: '● Menu' };
+  st.textContent = live.running ? (labels[live.state] || '● Jeu ouvert') : '○ Jeu fermé';
+  st.className = 'val-status' + (live.running ? (live.state === 'MENUS' ? ' menu' : ' live') : '');
+
+  const rank = v.rank;
+  document.getElementById('valorant').style.setProperty('--tier', (rank && rank.color) || '#8a8f99');
+  document.getElementById('val-tier').textContent = rank ? rank.tier : 'Rang inconnu';
+  const rr = rank && rank.rr != null ? Math.max(0, Math.min(100, rank.rr)) : 0;
+  document.getElementById('val-rrfill').style.width = rr + '%';
+  const rrEl = document.getElementById('val-rr');
+  rrEl.replaceChildren();
+  if (rank && rank.rr != null) {
+    rrEl.append(rank.rr + ' RR');
+    if (rank.last_change) {
+      rrEl.append(' ', valEl('span', rank.last_change > 0 ? 'up' : 'down', (rank.last_change > 0 ? '+' : '') + rank.last_change));
+    }
+  } else if (rank && rank.source === 'local') {
+    rrEl.append('RR dispo avec HenrikDev');
+  }
+  if (rank && rank.peak_tier) rrEl.append(' · peak ' + rank.peak_tier);
+
+  const main = document.getElementById('val-live-main');
+  const sub = document.getElementById('val-live-sub');
+  main.replaceChildren();
+  const where = [live.map, live.mode].filter(Boolean).join(' · ');
+  if (!live.running) {
+    main.textContent = 'Jeu fermé';
+    sub.textContent = 'Le direct s’active quand Valorant est lancé';
+  } else if (live.state === 'INGAME' && live.score_ally != null) {
+    main.append(valEl('span', 'ally', String(live.score_ally)), ' : ', valEl('span', 'enemy', String(live.score_enemy)));
+    sub.textContent = where;
+  } else if (live.state === 'PREGAME') {
+    main.textContent = 'Sélection d’agent';
+    sub.textContent = where;
+  } else if (live.state === 'INGAME') {
+    main.textContent = 'En jeu';
+    sub.textContent = where;
+  } else {
+    main.textContent = 'Dans les menus';
+    const acc = v.account || {};
+    sub.textContent = live.party_size > 1 ? 'Groupe de ' + live.party_size : (acc.name ? acc.name + '#' + (acc.tag || '') : '');
+  }
+
+  const list = document.getElementById('val-matches');
+  list.replaceChildren();
+  const ms = v.matches || [];
+  if (!ms.length) {
+    list.append(valEl('li', 'empty', v.configured ? 'Aucun match récupéré pour l’instant' : 'Les derniers matchs arrivent avec la clé HenrikDev'));
+  }
+  ms.forEach(m => {
+    const res = VAL_RESULTS[m.result] || ['·', '', 'Résultat inconnu'];
+    const li = valEl('li');
+    li.title = [res[2], m.mode, m.hs_pct != null ? 'HS ' + m.hs_pct + ' %' : ''].filter(Boolean).join(' · ');
+    li.append(
+      valEl('span', 'res ' + res[1], res[0]),
+      valEl('span', 'where', [m.agent, m.map, m.mode].filter(Boolean).join(' · ')),
+      valEl('span', 'mono', m.rounds_won != null ? m.rounds_won + '-' + m.rounds_lost : ''),
+      valEl('span', 'mono muted', m.kills != null ? m.kills + '/' + m.deaths + '/' + m.assists : '')
+    );
+    list.append(li);
+  });
+
+  document.querySelectorAll('[data-val-panel]').forEach(b => {
+    const on = b.dataset.valPanel === v.panel;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+
+  const h = v.henrik || {};
+  let src;
+  if (!v.configured) src = 'Ajoute ta clé HenrikDev dans valorant_config.json';
+  else if (h.error) src = h.error;
+  else if (h.updated) src = 'HenrikDev · màj ' + new Date(h.updated * 1000).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  else src = 'HenrikDev · chargement…';
+  document.getElementById('val-source').textContent = src;
+}
+async function pollValorant() {
+  try {
+    const r = await fetch('/api/valorant');
+    if (!r.ok) return;
+    valState = await r.json();
+    renderValorant(valState);
+  } catch (e) { /* serveur pas encore redémarré */ }
+}
+function drawValorantPreview(ctx, w, h) {
+  const v = valState || {};
+  const live = v.live || {};
+  const rank = v.rank;
+  const acc = v.account || {};
+  const disp = "Oxanium, 'JetBrains Mono', Consolas, sans-serif";
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#08080c';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#ff4655';
+  ctx.fillRect(0, 0, Math.max(2, w * 0.004), h);
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.font = `700 ${Math.round(h * 0.09)}px ${disp}`;
+  ctx.fillText('VALORANT', w * 0.02, h * 0.9);
+  const inMatch = live.state === 'INGAME' || live.state === 'PREGAME';
+  ctx.fillStyle = '#ece8e1';
+  ctx.font = `700 ${Math.round(h * 0.2)}px ${disp}`;
+  ctx.fillText(inMatch ? (live.map || '') : (acc.name || ''), w * 0.02, h * 0.48);
+  ctx.fillStyle = '#96969e';
+  ctx.font = `${Math.round(h * 0.08)}px ${disp}`;
+  ctx.fillText(inMatch ? (live.mode || '') : (acc.tag ? '#' + acc.tag : ''), w * 0.022, h * 0.64);
+  if (live.state === 'INGAME' && live.score_ally != null) {
+    ctx.font = `700 ${Math.round(h * 0.45)}px ${disp}`;
+    ctx.textAlign = 'right'; ctx.fillStyle = '#5affc8';
+    ctx.fillText(String(live.score_ally), w / 2 - w * 0.03, h * 0.68);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#96969e';
+    ctx.fillText(':', w / 2, h * 0.64);
+    ctx.textAlign = 'left'; ctx.fillStyle = '#ff4655';
+    ctx.fillText(String(live.score_enemy), w / 2 + w * 0.03, h * 0.68);
+  } else if (live.state === 'PREGAME') {
+    ctx.textAlign = 'center'; ctx.fillStyle = '#ece8e1';
+    ctx.font = `700 ${Math.round(h * 0.15)}px ${disp}`;
+    ctx.fillText('SÉLECTION D’AGENT', w / 2, h * 0.56);
+  } else if ((v.matches || []).length) {
+    const m = v.matches[0];
+    const res = { win: ['VICTOIRE', '#5aff9f'], loss: ['DÉFAITE', '#ff4655'], draw: ['ÉGALITÉ', '#96969e'] }[m.result] || ['', '#96969e'];
+    ctx.textAlign = 'center'; ctx.fillStyle = res[1];
+    ctx.font = `700 ${Math.round(h * 0.15)}px ${disp}`;
+    ctx.fillText(res[0], w / 2, h * 0.5);
+    ctx.fillStyle = '#96969e';
+    ctx.font = `${Math.round(h * 0.08)}px ${disp}`;
+    ctx.fillText([m.rounds_won != null ? m.rounds_won + '-' + m.rounds_lost : '', m.map].filter(Boolean).join(' · '), w / 2, h * 0.66);
+  }
+  if (rank) {
+    ctx.textAlign = 'right';
+    ctx.fillStyle = rank.color || '#8a8f99';
+    ctx.font = `700 ${Math.round(h * 0.13)}px ${disp}`;
+    ctx.fillText(rank.tier, w * 0.975, h * 0.46);
+    if (rank.rr != null) {
+      ctx.fillStyle = '#96969e';
+      ctx.font = `${Math.round(h * 0.08)}px ${disp}`;
+      ctx.fillText(rank.rr + ' RR', w * 0.975, h * 0.62);
+    }
+  }
+  ctx.textAlign = 'left';
+}
+document.querySelectorAll('[data-val-panel]').forEach(b => b.addEventListener('click', async () => {
+  await post('/api/valorant/panel/' + b.dataset.valPanel);
+  pollValorant();
+}));
+document.getElementById('val-refresh').addEventListener('click', async () => {
+  await post('/api/valorant/refresh');
+  setTimeout(pollValorant, 4000);
+});
+pollValorant();
+setInterval(pollValorant, 3000);
 </script><script>
 /* Thème « Bad » : remplissage des curseurs et rappel de la zone active. Lecture seule du DOM. */
 (function(){

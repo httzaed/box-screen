@@ -822,15 +822,30 @@ def _draw_lyrics_hud(img: Image.Image) -> Image.Image:
     return result
 
 
+def _valorant_panel() -> tuple:
+    """(mode, priorité) Valorant pour le panel : mode = 'live' | 'menu' | None."""
+    try:
+        import valorant_source as _vs
+        return _vs.panel_mode(), _vs.panel_priority()
+    except Exception:
+        return None, None
+
+
 def _get_lyrics_cascade_mode() -> str:
-    """Cascade du layout lyrics : lyrics -> audio (viz) -> idle."""
+    """Cascade du layout lyrics : lyrics -> valorant (jeu ouvert) -> audio (viz) -> idle.
+    Valorant en mode « priority » passe avant les paroles. Visu forcée l'écarte sinon."""
+    v_mode, v_prio = _valorant_panel()
+    if v_mode and v_prio == "priority":
+        return "valorant"
     try:
         import lyrics_source as _ls
         import bpm_source
         state = _ls.get_state()
+        force = get_force_viz()
         # Attendre 15 secondes de silence continu avant de réafficher l'ASCII.
         import time
         audio_level = bpm_source.get_level()
+        silent_long = False
         if audio_level < 0.01:
             now = time.monotonic()
             silence_since = getattr(_get_lyrics_cascade_mode, '_silence_since', None)
@@ -838,31 +853,51 @@ def _get_lyrics_cascade_mode() -> str:
                 silence_since = now
                 _get_lyrics_cascade_mode._silence_since = now
             if now - silence_since >= 15.0:
-                return "idle"
+                silent_long = True
         else:
             _get_lyrics_cascade_mode._silence_since = None
 
-        if state is None:
-            return "audio"
-
-        lines = state.get("lines", [])
-        force = get_force_viz()
-        result = "lyrics"
-        if force or len(lines) == 0:
+        lines = state.get("lines", []) if state else []
+        if silent_long:
+            result = "idle"
+        elif state is None or force or len(lines) == 0:
             result = "audio"
+        else:
+            result = "lyrics"
+        if result != "lyrics" and v_mode and not force:
+            result = "valorant"
         # Log debug (une fois par seconde max pour éviter spam)
-        import time
-        if not hasattr(_get_lyrics_cascade_mode, '_last_log'):
-            _get_lyrics_cascade_mode._last_log = 0
-        if time.time() - _get_lyrics_cascade_mode._last_log > 1:
-            print(f"[CASCADE] mode={result} force={force} lines={len(lines)} loading={state.get('loading', False)} level={audio_level:.3f}")
-            _get_lyrics_cascade_mode._last_log = time.time()
+        if state is not None or v_mode:
+            if not hasattr(_get_lyrics_cascade_mode, '_last_log'):
+                _get_lyrics_cascade_mode._last_log = 0
+            if time.time() - _get_lyrics_cascade_mode._last_log > 1:
+                loading = state.get('loading', False) if state else False
+                print(f"[CASCADE] mode={result} force={force} lines={len(lines)} loading={loading} level={audio_level:.3f} valorant={v_mode}")
+                _get_lyrics_cascade_mode._last_log = time.time()
         return result
     except ImportError:
-        return "idle"
+        return "valorant" if v_mode else "idle"
 
 
 def build_frame() -> Image.Image:
+    # ── Cascade calculée une seule fois par frame ────────────────────────────
+    cascade_mode = _get_lyrics_cascade_mode() if LAYOUT == "lyrics" else None
+    if cascade_mode == "valorant":
+        if background_override is not None:
+            v_bg = background_override.copy()
+        else:
+            v_bg = Image.new("RGB", (WIDTH, HEIGHT), COLOR_BG)
+        try:
+            import render_valorant
+            return render_valorant.build_frame(bg=v_bg, width=WIDTH, height=HEIGHT)
+        except Exception as e:
+            # Ne jamais laisser l'écran figé : retombe sur l'ASCII
+            if time.monotonic() - getattr(build_frame, '_v_err_log', 0) > 30:
+                print(f"[RENDER] Écran Valorant en erreur, retour ASCII : {e}")
+                build_frame._v_err_log = time.monotonic()
+            import render_ascii
+            return render_ascii.build_frame(bg=v_bg, width=WIDTH, height=HEIGHT)
+
     # ── Check cache frame ────────────────────────────────────────────────────
     current_key = _get_frame_key()
     if LAYOUT == "lyrics":  # cache intelligent pour lyrics
@@ -909,7 +944,6 @@ def build_frame() -> Image.Image:
         return _draw_terminal_hud(img, gauges, now)
 
     if LAYOUT == "lyrics":
-        cascade_mode = _get_lyrics_cascade_mode()
         if cascade_mode == "audio":
             import render_audio_viz
             return render_audio_viz.build_frame(bg=img)

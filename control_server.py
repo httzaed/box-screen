@@ -154,6 +154,7 @@ def _lyrics_live_state():
             "title": raw.get("title", ""), "current_idx": idx,
             "total_lines": len(lines), "synced": bool(raw.get("has_sync")),
             "loading": bool(raw.get("loading")), "source": raw.get("source") or "auto",
+            "chosen": bool(raw.get("chosen")),
             "position": raw.get("position"), "raw_position": raw.get("raw_position"),
             "offset": raw.get("offset", 0), "clock_source": raw.get("clock_source", "estimated"),
             "current_line": text_at(idx),
@@ -446,6 +447,14 @@ class _Handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     print(f"[API] Error getting lyrics state: {e}")
                     self._send(500,"application/json",json.dumps({"error": str(e)}))
+            elif p=="/api/valorant":
+                # Stats Valorant (client local + HenrikDev) pour la carte du dashboard
+                try:
+                    import valorant_source
+                    self._send(200,"application/json",json.dumps(valorant_source.snapshot()))
+                except Exception as e:
+                    print(f"[API] Error getting Valorant state: {e}")
+                    self._send(500,"application/json",json.dumps({"error": str(e)}))
             elif p=="/api/led/color":
                 # Get current LED fan color
                 try:
@@ -496,6 +505,15 @@ class _Handler(BaseHTTPRequestHandler):
                 if k=="lyrics-manual-search":
                     _do_lyrics_manual_search(self)
                     return
+                if k=="lyrics-candidates":
+                    _do_lyrics_candidates(self)
+                    return
+                if k=="lyrics-choose":
+                    _do_lyrics_choose(self)
+                    return
+                if k=="lyrics-choice-reset":
+                    _do_lyrics_choice_reset(self)
+                    return
                 if k=="lyrics-flag-temp":
                     _do_lyrics_flag_temp(self)
                     return
@@ -510,6 +528,17 @@ class _Handler(BaseHTTPRequestHandler):
                         self._send(200,"application/json",json.dumps({'ok':True,'force_viz':v}))
                     except Exception as e:
                         self._send(200,"application/json",json.dumps({'ok':False,'error':str(e)}))
+                    return
+                if k=="valorant" and len(parts)>=3:
+                    import valorant_source
+                    if parts[2]=="refresh":
+                        valorant_source.refresh_now()
+                        self._send(200,"application/json",'{"ok":true}')
+                    elif parts[2]=="panel" and len(parts)>=4:
+                        ok = valorant_source.set_panel(parts[3])
+                        self._send(200 if ok else 400,"application/json",json.dumps({'ok':ok,'panel':parts[3]}))
+                    else:
+                        self._send(400,"application/json",'{"ok":false}')
                     return
                 if k=="auto-enable":
                     result = _do_auto_enable()
@@ -843,6 +872,49 @@ def _do_lyrics_manual_search(self):
         self._send(500, "application/json", json.dumps({"ok": False, "error": str(e)}))
 
 
+def _read_json_body(self) -> dict:
+    length = int(self.headers.get('Content-Length', 0) or 0)
+    if length <= 0:
+        return {}
+    data = json.loads(self.rfile.read(length).decode() or "{}")
+    return data if isinstance(data, dict) else {}
+
+
+def _do_lyrics_candidates(self):
+    """Menu de choix : liste toutes les versions de paroles trouvées."""
+    try:
+        data = _read_json_body(self)
+        import lyrics_source
+        result = lyrics_source.list_lyrics_candidates(data.get('artist'), data.get('title'))
+        self._send(200 if result.get('ok') else 404, "application/json", json.dumps(result))
+    except Exception as e:
+        print(f"[LYRICS API] Candidates error: {e}")
+        self._send(500, "application/json", json.dumps({"ok": False, "error": str(e)}))
+
+
+def _do_lyrics_choose(self):
+    """Menu de choix : applique et mémorise la version choisie."""
+    try:
+        data = _read_json_body(self)
+        import lyrics_source
+        result = lyrics_source.choose_lyrics(str(data.get('token', '')), str(data.get('id', '')))
+        self._send(200 if result.get('ok') else 410, "application/json", json.dumps(result))
+    except Exception as e:
+        print(f"[LYRICS API] Choose error: {e}")
+        self._send(500, "application/json", json.dumps({"ok": False, "error": str(e)}))
+
+
+def _do_lyrics_choice_reset(self):
+    """Menu de choix : oublie le choix manuel et revient à la recherche automatique."""
+    try:
+        import lyrics_source
+        result = lyrics_source.reset_lyrics_choice()
+        self._send(200 if result.get('ok') else 404, "application/json", json.dumps(result))
+    except Exception as e:
+        print(f"[LYRICS API] Choice reset error: {e}")
+        self._send(500, "application/json", json.dumps({"ok": False, "error": str(e)}))
+
+
 def _do_lyrics_flag_temp(self):
     """Marque temporairement (session) - évite cette source maintenant."""
     try:
@@ -1040,6 +1112,11 @@ def start(switch_fn=None,switch_hud_fn=None,get_state_fn=None,set_led_fn=None,au
         _sse_start()
         import music_ambience
         music_ambience.start()
+        try:
+            import valorant_source
+            valorant_source.start()
+        except Exception as e:
+            print(f"[VALORANT] Démarrage impossible : {e}")
         print(f"[SSE] Real-time events available at http://localhost:{PORT}/api/events")
 
     except Exception as e:
