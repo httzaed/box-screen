@@ -18,11 +18,7 @@ if __name__ == "__main__" and "--launcher-child" not in sys.argv:
     raise SystemExit(main(sys.argv[1:]))
 
 import time, math, random, importlib, threading, io, struct
-try:
-    import keyboard as _keyboard
-    _KEYBOARD_LIB = True
-except ImportError:
-    _KEYBOARD_LIB = False
+from windows_hotkeys import register as register_hotkeys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
@@ -34,6 +30,11 @@ import render_tiles
 import render_matrix
 import render_audio_viz
 from panel import Panel, WIDTH, HEIGHT, _image_to_jpeg, _send_frame
+import panel as _panel_mod
+import panel_alerts
+# Alertes « commentaire » du dashboard Valorant : dessinées en grand par-dessus chaque frame du boîtier
+_panel_mod._send_frame = panel_alerts.wrap(_panel_mod._send_frame)
+_send_frame = _panel_mod._send_frame
 import control_server
 
 # ── LED (wave + fans) ───────────────────────────────────────────────────────
@@ -651,16 +652,15 @@ def _auto_tick():
 # ══════════════════════════════════════════════════════════════════════════
 
 def _setup_hotkeys():
-    if not _KEYBOARD_LIB:
-        print("[Hotkeys] lib 'keyboard' introuvable — pip install keyboard")
-        return
-    _keyboard.add_hotkey("ctrl+shift+right", lambda: threading.Thread(target=_switch,     args=(+1,), daemon=True).start(), suppress=False)
-    _keyboard.add_hotkey("ctrl+shift+left",  lambda: threading.Thread(target=_switch,     args=(-1,), daemon=True).start(), suppress=False)
-    _keyboard.add_hotkey("ctrl+shift+up",    lambda: threading.Thread(target=_switch_hud, args=(+1,), daemon=True).start(), suppress=False)
-    _keyboard.add_hotkey("ctrl+shift+down",  lambda: threading.Thread(target=_switch_hud, args=(-1,), daemon=True).start(), suppress=False)
-    _keyboard.add_hotkey("ctrl+shift+l",     _resync_lyrics, suppress=False)
-    _keyboard.add_hotkey("ctrl+shift+r",     _resync_youtube, suppress=False)
-    print("[Hotkeys] OK (ctrl+shift+left/right  modes  |  ctrl+shift+up/down  HUD style  |  ctrl+shift+l  resync lyrics  |  ctrl+shift+r  YouTube timecode resync)")
+    ctrl_shift = 0x0002 | 0x0004
+    register_hotkeys([
+        (ctrl_shift, 0x27, lambda: _switch(+1)),
+        (ctrl_shift, 0x25, lambda: _switch(-1)),
+        (ctrl_shift, 0x26, lambda: _switch_hud(+1)),
+        (ctrl_shift, 0x28, lambda: _switch_hud(-1)),
+        (ctrl_shift, ord("L"), _resync_lyrics),
+        (ctrl_shift, ord("R"), _resync_youtube),
+    ])
 
 
 # ══════════════════════════════════════════════════════════════════════════

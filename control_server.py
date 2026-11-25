@@ -9,7 +9,8 @@ Real-time state updates via Server-Sent Events (SSE):
 """
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from pathlib import Path
-import json, threading, urllib.parse, time, queue
+import json
+import re, threading, urllib.parse, time, queue
 from collections import deque
 
 PORT = 7420
@@ -455,6 +456,36 @@ class _Handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     print(f"[API] Error getting Valorant state: {e}")
                     self._send(500,"application/json",json.dumps({"error": str(e)}))
+            elif p=="/api/pc":
+                # Santé du PC (CPU, RAM, GPU, disques, réseau, processus) pour le dashboard
+                try:
+                    import pc_health
+                    self._send(200,"application/json",json.dumps(pc_health.snapshot()))
+                except Exception as e:
+                    self._send(200,"application/json",json.dumps({"ok":False,"error":str(e)[:200]}))
+            elif p.startswith("/agents/") and p.endswith(".img"):
+                # Image d'agent déposée par l'utilisateur dans agents_icons/<agent>.png|.webp|.jpg
+                slug = p[len("/agents/"):-len(".img")]
+                types = {".png":"image/png",".webp":"image/webp",".jpg":"image/jpeg",".jpeg":"image/jpeg"}
+                found = None
+                if re.fullmatch(r"[a-z0-9-]{1,40}", slug):
+                    for ext,ct in types.items():
+                        f = Path(__file__).parent / "agents_icons" / (slug + ext)
+                        if f.is_file():
+                            found = (f,ct)
+                            break
+                if found:
+                    self._send(200,found[1],found[0].read_bytes())
+                else:
+                    self._send(404,"text/plain","Not found")
+            elif p.startswith("/agents/") and p.endswith(".txt"):
+                # Artworks ASCII des agents, déposés dans agents_ascii/<agent>.txt (ex. reyna.txt)
+                slug = p[len("/agents/"):-len(".txt")]
+                f = Path(__file__).parent / "agents_ascii" / (slug + ".txt")
+                if re.fullmatch(r"[a-z0-9-]{1,40}", slug) and f.is_file():
+                    self._send(200,"text/plain; charset=utf-8",f.read_text(encoding="utf-8",errors="replace"))
+                else:
+                    self._send(404,"text/plain","Not found")
             elif p=="/api/led/color":
                 # Get current LED fan color
                 try:
@@ -533,6 +564,17 @@ class _Handler(BaseHTTPRequestHandler):
                     import valorant_source
                     if parts[2]=="refresh":
                         valorant_source.refresh_now()
+                        self._send(200,"application/json",'{"ok":true}')
+                    elif parts[2]=="alert":
+                        # Alerte « commentaire » du dashboard : affichée en grand sur l'écran du boîtier
+                        n = int(self.headers.get("Content-Length") or 0)
+                        try:
+                            body = json.loads(self.rfile.read(min(n, 4096)).decode("utf-8") or "{}")
+                        except Exception:
+                            body = {}
+                        import panel_alerts
+                        panel_alerts.push(body.get("text"), body.get("label") or "Commentaire",
+                                          body.get("kind") or "", int(body.get("life_ms") or 6000))
                         self._send(200,"application/json",'{"ok":true}')
                     elif parts[2]=="panel" and len(parts)>=4:
                         ok = valorant_source.set_panel(parts[3])
