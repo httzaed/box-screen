@@ -141,7 +141,16 @@ def _gpu_stats():
     return 0.0, 0.0, 0
 
 # ── Fonts ──────────────────────────────────────────────────────────────────
+_FONT_CACHE: dict = {}
+
+
 def _font(size):
+    # Une police par taille, chargée une seule fois : chaque chargement peut coûter
+    # plusieurs secondes sous Windows et bloquait l'envoi des images au boîtier.
+    size = int(size)
+    cached = _FONT_CACHE.get(size)
+    if cached is not None:
+        return cached
     _home = pathlib.Path.home()
     candidates = [
         # Windows (user fonts)
@@ -160,15 +169,21 @@ def _font(size):
         pathlib.Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
     ]
     for path in candidates:
+        # Fichier absent : on passe, sinon Pillow fouille tout le dossier des polices.
+        if not path.is_file():
+            continue
         try:
             font = ImageFont.truetype(str(path), size)
             if "VariableFont_wght" in path.name:
                 # La variante par défaut peut être Thin : choisir SemiBold.
                 font.set_variation_by_axes([600])
+            _FONT_CACHE[size] = font
             return font
         except (OSError, TypeError):
             pass
-    return ImageFont.load_default()
+    font = ImageFont.load_default()
+    _FONT_CACHE[size] = font
+    return font
 
 FONT_VALUE    = _font(52)
 FONT_LABEL    = _font(22)

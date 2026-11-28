@@ -666,6 +666,11 @@ def _set_cached_lyrics(artist: str, title: str, synced: list, plain: str, offset
     cache = _get_disk_cache()
     import time
     existing = cache.get(key, {})
+    if existing.get("chosen") and existing.get("synced"):
+        # Paroles choisies dans le menu : la recherche automatique ne les remplace pas.
+        existing["last_played"] = time.time()
+        _mark_cache_dirty()
+        return
     if existing.get("offset_source") == "manual":
         offset = existing["offset"]
     cache[key] = {
@@ -2107,6 +2112,12 @@ def _load_lyrics_for(artist: str, title: str, video_id: str | None, fast_first: 
     candidates = []
     media_duration = None  # Pourrait être enrichi via WinRT plus tard
 
+    # Paroles choisies dans le menu : prioritaires, pas de recherche réseau.
+    chosen = _get_chosen_lyrics(artist, title)
+    if chosen:
+        print(f"[LYRICS] [OK] paroles choisies manuellement ({chosen['source']})")
+        return chosen
+
     # Fast mode : retourne immédiatement si lrclib trouve
     if fast_first:
         fast_result = _load_lyrics_fast(artist, title, video_id)
@@ -2309,6 +2320,304 @@ def _load_lyrics_for(artist: str, title: str, video_id: str | None, fast_first: 
     _flush_cache_if_dirty()
 
     return best_candidate
+
+
+# ── Choix manuel des paroles (menu de l'UI Phosphor) ────────────────────────────
+# Le menu liste toutes les versions trouvées (LRCLIB, sous-titres YouTube,
+# Genius, lyrics.ovh). La version choisie est gardée dans le cache avec
+# "chosen": True et passe avant toute recherche automatique pour ce morceau.
+
+_candidate_sets: dict = {}   # token -> {"target": (artist, title), "items": {id: lyrics}}
+_pending_choice = None       # {"key": cache_key, "lyrics": dict} à appliquer par _run
+
+
+def _source_label(source) -> str:
+    """Nom lisible d'une source de paroles."""
+    s = str(source or "")
+    if not s:
+        return "auto"
+    if s.startswith("choix:"):
+        return "Choisies · " + s[6:]
+    if s.startswith("youtube_captions"):
+        return "Sous-titres YouTube"
+    if s.startswith("lrclib"):
+        return "LRCLIB"
+    if s.startswith("genius"):
+        return "Genius"
+    if s.startswith("lyrics_ovh"):
+        return "lyrics.ovh"
+    return s
+
+
+def _search_title(title: str) -> str:
+    """Même nettoyage de titre que _load_lyrics_for."""
+    import re as _re
+    t = _normalize_featuring(title)
+    t = _re.sub(r'\s*[\(\[][^\)\]]*[\)\]]\s*$', '', t).strip()
+    t = _re.sub(r'\s*[-–]\s*(Official|Video|HD|Remastered|Remaster|Explicit|Lyrics)\b.*$', '', t, flags=_re.IGNORECASE).strip()
+    t = _re.sub(r'\s*[-–]\s*\d{4}\s*$', '', t).strip()
+    t = _re.sub(r'\s*[\(\[][^()\]]*?(Official|Video|HD|Remaster|Version|Lyrics|Audio)[^)\]]*?[\)\]]', '', t, flags=_re.IGNORECASE).strip()
+    try:
+        import lyrics_special_cases as _lsc
+        t = _lsc.normalize_alternative_title(t)
+    except Exception:
+        pass
+    return t or title
+
+
+def _get_chosen_lyrics(artist: str, title: str) -> dict | None:
+    """Paroles choisies dans le menu pour ce morceau, ou None."""
+    entry = _get_disk_cache().get(_cache_key(artist, title)) or {}
+    if not entry.get("chosen") or not entry.get("synced"):
+        return None
+    lines = [tuple(l) if isinstance(l, (list, tuple)) else (None, str(l)) for l in entry["synced"]]
+    return {"synced": lines, "plain": entry.get("plain", ""),
+            "source": "choix:" + str(entry.get("chosen_source") or "manuel"), "chosen": True}
+
+
+def _apply_pending_choice(lyrics, artist: str, title: str):
+    """Remplace les paroles en cours si un choix vient d'être fait pour ce morceau."""
+    global _pending_choice
+    with _lock:
+        pending = _pending_choice
+        if pending is None:
+            return lyrics
+        _pending_choice = None
+    if pending["key"] == _cache_key(artist, title):
+        print(f"[LYRICS] [OK] nouvelles paroles appliquées ({pending['lyrics'].get('source')})")
+        return pending["lyrics"]
+    return lyrics
+
+
+def _lrclib_all(artist: str, title: str, timeout: float = 12.0) -> list:
+    """Toutes les versions LRCLIB plausibles (get + search), sans doublon."""
+    import urllib.request, urllib.parse, urllib.error, json as _json
+    headers = {"User-Agent": "BoxScreen (https://github.com/) lyrics-sync"}
+    found, seen = [], set()
+
+    def add(entry):
+        if not isinstance(entry, dict):
+            return
+        if not (entry.get("syncedLyrics") or entry.get("plainLyrics")):
+            return
+        ident = entry.get("id") or (entry.get("artistName"), entry.get("trackName"), entry.get("duration"))
+        if ident in seen:
+            return
+        seen.add(ident)
+        found.append(entry)
+
+    def get_json(url):
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return _json.loads(r.read().decode())
+
+    try:
+        params = urllib.parse.urlencode({"artist_name": artist, "track_name": title})
+        add(get_json(f"https://lrclib.net/api/get?{params}"))
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            print(f"[LYRICS]   menu lrclib /get: HTTP {e.code}")
+    except Exception as e:
+        print(f"[LYRICS]   menu lrclib /get: {e}")
+
+    queries = []
+    for variant in _clean_title(title)[:2]:
+        queries.append({"q": f"{artist} {variant}".strip()})
+    queries.append({"track_name": title})
+    for q in queries:
+        try:
+            results = get_json("https://lrclib.net/api/search?" + urllib.parse.urlencode(q))
+        except Exception as e:
+            print(f"[LYRICS]   menu lrclib /search: {e}")
+            continue
+        if not isinstance(results, list):
+            continue
+        for x in results:
+            if isinstance(x, dict) and _fuzzy_match(title, x.get("trackName") or "") >= 0.6:
+                add(x)
+    return found
+
+
+def _lyrics_signature(lines) -> tuple:
+    texts = [str(l[1]).strip().lower() for l in (lines or [])
+             if isinstance(l, (list, tuple)) and len(l) >= 2 and l[1] and str(l[1]).strip()]
+    return (len(texts), tuple(texts[:6]))
+
+
+def list_lyrics_candidates(artist: str | None = None, title: str | None = None) -> dict:
+    """Cherche toutes les versions de paroles disponibles pour le menu de choix.
+
+    Le choix s'applique toujours au morceau en cours de lecture. artist/title
+    permettent de chercher sous un autre nom (titre mal reconnu par le lecteur).
+    """
+    import uuid
+    from concurrent.futures import ThreadPoolExecutor, wait
+
+    state = get_state() or {}
+    target_artist = state.get("artist") or ""
+    target_title = state.get("title") or ""
+    artist = (artist or "").strip() or target_artist
+    title = (title or "").strip() or target_title
+    if not artist or not title:
+        return {"ok": False, "error": "Aucun morceau en cours"}
+    if not target_artist or not target_title:
+        target_artist, target_title = artist, title
+
+    video_id = None
+    if _youtube_video_id and _youtube_title:
+        yt, tt = _youtube_title.lower(), target_title.lower()
+        if yt in tt or tt in yt:
+            video_id = _youtube_video_id
+
+    clean = _search_title(title)
+    print(f"[LYRICS] [MENU] recherche de toutes les versions: {artist!r} / {clean!r}")
+
+    def from_lrclib():
+        out = []
+        for data in _lrclib_all(artist, clean):
+            res = _result_to_lyrics(data)
+            if res:
+                res.update(artistName=data.get("artistName"), trackName=data.get("trackName"),
+                           albumName=data.get("albumName"), duration=data.get("duration"),
+                           source="lrclib", _kind="sync" if data.get("syncedLyrics") else "texte")
+                out.append(res)
+        return out
+
+    def from_youtube():
+        if not video_id or _quota_is_blocked():
+            return []
+        res = _fetch_youtube_captions(video_id)
+        if res:
+            res["source"] = f"youtube_captions({video_id[:8]})"
+            res["_kind"] = "sync"
+            return [res]
+        return []
+
+    def from_genius():
+        data = _genius_fetch(artist, clean)
+        res = _result_to_lyrics(data) if data else None
+        if res:
+            res.update(source="genius", _kind="texte")
+            return [res]
+        return []
+
+    def from_ovh():
+        for variant in _clean_title(clean)[:2]:
+            data = _lyrics_ovh_get(artist, variant, timeout=4.0)
+            res = _result_to_lyrics(data) if data else None
+            if res:
+                res.update(source="lyrics_ovh", _kind="texte")
+                return [res]
+        return []
+
+    found = []
+    pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="lyrics_menu")
+    futures = [pool.submit(f) for f in (from_lrclib, from_youtube, from_genius, from_ovh)]
+    done, _ = wait(futures, timeout=25)
+    pool.shutdown(wait=False)
+    for f in done:
+        try:
+            found.extend(f.result() or [])
+        except Exception as e:
+            print(f"[LYRICS]   menu source en erreur: {e}")
+
+    media_duration = get_duration() or None
+    current_sig = _lyrics_signature(state.get("lines"))
+    token = uuid.uuid4().hex[:12]
+    items, rows, seen_sig = {}, [], set()
+    for i, cand in enumerate(found):
+        sig = _lyrics_signature(cand.get("synced"))
+        if not sig[0] or (cand.get("source"), cand.get("_kind"), sig) in seen_sig:
+            continue
+        seen_sig.add((cand.get("source"), cand.get("_kind"), sig))
+        try:
+            score, _ = score_lyrics_candidate(cand, artist, title, media_duration, video_id)
+        except Exception:
+            score = 0.0
+        cid = f"c{i}"
+        items[cid] = cand
+        rows.append({
+            "id": cid,
+            "source": _source_label(cand.get("source")),
+            "kind": cand.get("_kind", "texte"),
+            "artist": cand.get("artistName") or "",
+            "track": cand.get("trackName") or "",
+            "album": cand.get("albumName") or "",
+            "duration": cand.get("duration"),
+            "lines": sig[0],
+            "preview": [str(l[1]).strip() for l in cand["synced"] if l[1] and str(l[1]).strip()][:4],
+            "score": round(score),
+            "current": sig == current_sig,
+        })
+    # Le meilleur score = ce que la recherche automatique affiche par défaut.
+    if rows:
+        best = max(rows, key=lambda r: (r["kind"] == "sync", r["score"]))
+        for r in rows:
+            r["best"] = r is best
+    rows.sort(key=lambda r: (r.get("best", False), r["current"], r["kind"] == "sync", r["score"]), reverse=True)
+
+    with _lock:
+        _candidate_sets[token] = {"target": (target_artist, target_title), "items": items}
+        while len(_candidate_sets) > 5:
+            _candidate_sets.pop(next(iter(_candidate_sets)))
+
+    entry = _get_disk_cache().get(_cache_key(target_artist, target_title)) or {}
+    print(f"[LYRICS] [MENU] {len(rows)} version(s) trouvée(s)")
+    return {"ok": True, "token": token, "artist": target_artist, "title": target_title,
+            "searched": {"artist": artist, "title": title}, "media_duration": media_duration,
+            "chosen": bool(entry.get("chosen")), "candidates": rows}
+
+
+def choose_lyrics(token: str, cand_id: str) -> dict:
+    """Applique une version du menu au morceau en cours et la garde pour la suite."""
+    global _pending_choice
+    with _lock:
+        cset = _candidate_sets.get(token)
+    if not cset or cand_id not in cset["items"]:
+        return {"ok": False, "error": "Liste expirée, relance la recherche"}
+    cand = cset["items"][cand_id]
+    artist, title = cset["target"]
+    label = _source_label(cand.get("source"))
+    if cand.get("trackName"):
+        label += f" · {cand.get('artistName') or ''} - {cand['trackName']}".rstrip()
+    synced = [tuple(l) for l in cand.get("synced") or []]
+    lyrics = {"synced": synced, "plain": cand.get("plain", ""), "source": "choix:" + label, "chosen": True}
+
+    key = _cache_key(artist, title)
+    with _cache_lock:
+        entry = _get_disk_cache().setdefault(key, {"artist": artist, "title": title, "offset": 0.5})
+        entry.update(synced=synced, plain=lyrics["plain"], chosen=True,
+                     chosen_source=label, chosen_at=time.time())
+        _mark_cache_dirty()
+        _flush_cache_if_dirty()
+    with _lock:
+        _pending_choice = {"key": key, "lyrics": lyrics}
+    print(f"[LYRICS] [MENU] choix enregistré: {artist} - {title} -> {label}")
+    return {"ok": True, "source": _source_label(lyrics["source"])}
+
+
+def reset_lyrics_choice() -> dict:
+    """Oublie le choix manuel du morceau en cours et relance la recherche automatique."""
+    global _pending_choice
+    state = get_state() or {}
+    artist, title = state.get("artist") or "", state.get("title") or ""
+    if not artist or not title:
+        return {"ok": False, "error": "Aucun morceau en cours"}
+    key = _cache_key(artist, title)
+    with _cache_lock:
+        entry = _get_disk_cache().get(key)
+        if entry:
+            for k in ("chosen", "chosen_source", "chosen_at"):
+                entry.pop(k, None)
+            _mark_cache_dirty()
+            _flush_cache_if_dirty()
+    video_id = _youtube_video_id if (_youtube_title and _youtube_title.lower() in title.lower()) else None
+    lyrics = _load_lyrics_for(artist, title, video_id, fast_first=False)
+    if not lyrics:
+        return {"ok": False, "error": "Aucune parole trouvée automatiquement"}
+    with _lock:
+        _pending_choice = {"key": key, "lyrics": lyrics}
+    return {"ok": True, "source": _source_label(lyrics.get("source"))}
 
 
 # ── Thread principal ──────────────────────────────────────────────────────────
@@ -2610,6 +2919,7 @@ def _run():
     
             # Apply upgrades before calculating the active line at the current clock.
             lyrics = _apply_lyrics_refinement(lyrics)
+            lyrics = _apply_pending_choice(lyrics, artist, title)
 
             # ── Mise à jour state ──────────────────────────────────────────────
             if last_key is not None:
@@ -2631,6 +2941,8 @@ def _run():
                             "offset": _calibrated_offset or 0.0,
                             "clock_source": clock_source,
                             "has_sync":    lyrics["synced"][0][0] is not None,
+                            "source":      _source_label(lyrics.get("source")),
+                            "chosen":      bool(lyrics.get("chosen")),
                             "loading":     False,  # <- Chargement terminé
                         }
                     else:

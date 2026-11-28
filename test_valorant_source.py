@@ -223,6 +223,53 @@ def test_match_recap():
     assert vs.parse_match_recap(_recap_match(), "inconnu") is None
 
 
+def test_spike_death_is_not_a_kill():
+    m = _recap_match()
+    # manche 1 : tu meurs de ta propre spike (Riot te met comme ton propre tueur), et un allié tué par un allié
+    m["kills"] += [{"round": 1, "time_in_round_in_ms": 90000, "killer": {"puuid": "me"}, "victim": {"puuid": "me"},
+                    "weapon": {"name": None}},
+                   {"round": 1, "time_in_round_in_ms": 500, "killer": {"puuid": "x"}, "victim": {"puuid": "ami"},
+                    "weapon": {"name": "Vandal"}}]
+    r = vs.parse_match_recap(m, "me")
+    me = r["me"]
+    assert r["rounds"][1]["my_kills"] == 0
+    assert dict(me["weapons"]) == {"Vandal": 2, "Sheriff": 1}
+    assert me["multis"]["3K"] == 1 and me["best_round"] == {"n": 1, "kills": 3}
+    d = vs.detail_from_v4(m, "me")
+    assert sum(d["weapons"].values()) == 3 and "Capacité" not in d["weapons"] and d["v"] == vs.DETAIL_VERSION
+    team_of = {"me": "Red", "ami": "Red", "e1": "Blue"}
+    assert vs.is_real_kill({"killer": {"puuid": "me"}, "victim": {"puuid": "e1"}}, team_of)
+    assert not vs.is_real_kill({"killer": {"puuid": "me"}, "victim": {"puuid": "me"}}, team_of)
+    assert not vs.is_real_kill({"killer": {}, "victim": {"puuid": "me"}}, team_of)
+    assert not vs.is_real_kill({"killer": {"puuid": "me"}, "victim": {"puuid": "ami"}}, team_of)
+
+
+def test_perf_score():
+    avg = vs.perf_score({"kills": 14.4, "deaths": 14.4, "assists": 5.2, "adr": 135, "kast": 14.4,
+                         "fb": 2, "fd": 2, "multi_pts": 1}, 20, 0.5)
+    assert 470 <= avg["score"] <= 530 and avg["parts"]["combat"] == 50
+    top = vs.perf_score({"kills": 23, "deaths": 7, "assists": 3, "adr": 238, "kast": 13,
+                         "fb": 4, "fd": 2, "multi_pts": 6, "clutch_pts": 0.5}, 16, 13 / 16)
+    low = vs.perf_score({"kills": 2, "deaths": 9, "assists": 1, "adr": 29, "kast": 7, "fb": 0, "fd": 1}, 16, 3 / 16)
+    assert top["score"] > 800 and top["grade"] in ("S", "A+") and low["score"] < 300 and low["grade"] == "D"
+    assert vs.perf_score({}, 0)["score"] >= 0
+    r = vs.parse_match_recap(_recap_match(), "me")
+    me = r["me"]
+    assert 0 <= me["perf"] <= 1000 and me["grade"] and me["perf_rank"] == 1 and me["lobby"] == 6
+    assert set(me["perf_parts"]) == set(vs.PERF_WEIGHTS)
+    assert sorted(p["perf_rank"] for p in r["players"]) == list(range(1, 7))
+    assert me["clutches"] == [{"round": 1, "vs": 3}] and me["kast"] == 50
+    lst = vs.parse_matches({"data": [_recap_match()]}, "me")
+    assert lst[0]["perf"] == me["perf"] and lst[0]["grade"] == me["grade"] and lst[0]["perf_rank"] == 1 and lst[0]["lobby"] == 6
+
+
+def test_merge_prefers_newer_detail():
+    old = {"id": "m", "at": "2026", "dmg": 1, "dmg_rcv": 1, "season_id": "s", "detail": {"weapons": {"Capacité": 1}}}
+    new = {"id": "m", "at": "2026", "dmg": 1, "dmg_rcv": 1, "season_id": "s", "detail": {"v": 3, "weapons": {}}}
+    assert vs.merge_rows([old], [new])[0]["detail"]["v"] == 3
+    assert vs.merge_rows([new], [old])[0]["detail"]["v"] == 3
+
+
 def test_pregame_full_and_coregame_full():
     pre = {"AllyTeam": {"TeamID": "Red", "Players": [
         {"Subject": "a", "CharacterID": "X", "CharacterSelectionState": "locked",
@@ -406,6 +453,9 @@ def test_detail_from_v4():
     # KAST : M1 kills, M2 mort vengée en 2 s (échange), M3 à M12 survie, M13 assist → 13 / 13
     assert d["kast"] == 13
     assert d["mates"] == ["Pote"]
+    # Suite des manches : M1 gagnée, M2 perdue, M3 gagnée, M4 à M12 perdues, M13 gagnée ; rouge part en attaque
+    assert d["seq"] == "VDV" + "D" * 9 + "V" and d["start"] == "atk" and len(d["ends"]) == 13
+    assert d["eco_us"][:3] == [8, 10, 47] and d["eco_them"][:3] == [0, 0, 0]
     assert vs.detail_from_v4(_detail_match(), "personne") is None
 
 
@@ -444,6 +494,57 @@ def test_map_report():
     assert b["scope"] == "Tous les modes" and b["games"] == 1 and b["tip"]
     assert vs.map_report(rows, "", roles) is None
     assert vs.map_report(rows, "Inconnue", roles)["games"] == 0
+
+
+def _tip_row(i, agent, mp, win, fb=1, fd=1, mates=(), at=None, mode="competitive", pistol=(1, 2), force=(1, 4)):
+    return {"id": f"t{i}", "at": at or f"2026-10-{1 + i % 28:02d}T{10 + i // 28:02d}:00:00Z", "mode": mode, "map": mp,
+            "agent": agent, "season": "", "season_id": "", "tier": 13, "k": 15, "d": 15, "a": 3, "score": 3000,
+            "dmg": 2500, "dmg_rcv": 2500, "head": 5, "body": 20, "leg": 0, "rw": 13 if win else 8, "rl": 8 if win else 13,
+            "detail": {"v": 3, "rounds": 21, "fb": fb, "fd": fd, "mates": list(mates), "pistol": list(pistol),
+                       "sides": {"atk": [6, 12], "def": [7, 9]} if win else {"atk": [3, 12], "def": [5, 9]},
+                       "eco": {"eco": [0, 2, 0], "force": list(force), "full": [6, 10, 8]}}}
+
+
+def test_pregame_tips():
+    roles = {"Reyna": "Duelliste", "Jett": "Duelliste", "Phoenix": "Duelliste", "Omen": "Contrôleur",
+             "Sova": "Initiateur", "Killjoy": "Sentinelle", "Veto": "Sentinelle"}
+    rows = ([_tip_row(i, "Reyna", "Haven", i % 4 == 0, fb=1, fd=4) for i in range(8)]          # 2 V sur 8 ici
+            + [_tip_row(10 + i, "Phoenix", "Haven", i % 4 != 0) for i in range(8)]             # 6 V sur 8 ici
+            + [_tip_row(20 + i, "Omen", "Bind", i % 3 != 0) for i in range(9)]
+            + [_tip_row(30 + i, "Reyna", "Ascent", i % 2 == 0, fb=1, fd=4) for i in range(10)]
+            + [_tip_row(50 + i, "Jett", "Skirmish A", True, mode="skirmish_2v2") for i in range(20)])
+    rep = vs.map_report(rows, "Haven", roles, competitive=True)
+    assert rep["overall"]["games"] == 35                      # les escarmouches 2v2 ne comptent pas
+    rep["role_of"] = roles
+    ctx = vs.tips_context(rows, "Haven", True)
+    team = [{"agent": "Reyna", "self": True}, {"agent": "Jett"}, {"agent": "Sova"}, {"agent": "Killjoy"}]
+    live = {"state": "PREGAME", "agent": "Reyna", "agent_state": "selected", "team": team, "side": "defense"}
+    tips = vs.pregame_tips(rep, ctx, live, now=vs._ts("2026-12-20T12:00:00Z"))
+    ks = [t["k"] for t in tips]
+    assert 1 <= len(tips) <= 5 and ks[0] == "Compo" and "Omen" in tips[0]["t"] and "contrôleur" in tips[0]["t"]
+    agent = next(t for t in tips if t["k"] == "Ton agent")
+    assert "Phoenix" in agent["t"] and "2 V sur 8" in agent["t"] and agent["cls"] == "bad"
+    assert "Duels" in ks and "premières morts" in next(t for t in tips if t["k"] == "Duels")["t"]
+    assert "Économie" in ks                                   # force-buy à 25 % contre 60 % en full
+    assert all(t["t"].count("<b>") == t["t"].count("</b>") for t in tips)
+    # Verrouillé : plus de conseil sur le choix, il reste le jeu
+    live_l = dict(live, agent_state="locked")
+    ks_l = [t["k"] for t in vs.pregame_tips(rep, ctx, live_l, now=vs._ts("2026-12-20T12:00:00Z"))]
+    assert "Compo" not in ks_l and "Ton agent" not in ks_l and "Duels" in ks_l
+    # Noms échappés, aucune casse sur un rapport vide
+    rep2 = dict(rep, agents=[], agents_all=[])
+    assert vs.pregame_tips(None, ctx, live) == []
+    assert isinstance(vs.pregame_tips(rep2, {}, {"agent": "<x>", "team": []}), list)
+    # Session : après 2 défaites de suite, l'historique dit si ça tourne mal
+    seq = [_tip_row(100 + i, "Omen", "Bind", w, at=f"2026-09-{1 + i // 4:02d}T{17 + i % 4}:00:00Z")
+           for i, w in enumerate([True, False, False, False] * 6)]
+    ctx2 = vs.tips_context(seq, "Haven", True)
+    s_tips = vs.pregame_tips(rep, ctx2, dict(live, agent_state="locked"), now=vs._ts("2026-09-06T21:00:00Z"))
+    sess = next(t for t in s_tips if t["k"] == "Session")
+    assert "3 défaites de suite" in sess["t"] and "0 %" in sess["t"] and sess["cls"] == "bad"
+    # Session finie depuis plus de 2 h : rien
+    late = vs.pregame_tips(rep, ctx2, dict(live, agent_state="locked"), now=vs._ts("2026-09-07T09:00:00Z"))
+    assert not any(t["k"] == "Session" for t in late)
 
 if __name__ == "__main__":
     fails = 0

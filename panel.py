@@ -21,6 +21,118 @@ def _frame_delivered():
         Path(_heartbeat_path).touch()
         _last_heartbeat = now
 
+# ── Diagnostic écran (logo Thermalright) ───────────────────────────────────
+# Écrit dans le log : les trous entre deux images, les erreurs USB, ce que
+# l'écran répond après chaque image, et un résumé toutes les 5 s.
+# Couper avec la variable d'environnement BOX_SCREEN_PANEL_DIAG=0.
+_DIAG = os.environ.get("BOX_SCREEN_PANEL_DIAG", "1") != "0"
+_DIAG_EVERY = 30.0
+_DIAG_GAP = 1.0          # trou signalé tout de suite au-delà d'1 s
+_diag_last_end = None
+_diag_seen = set()
+
+
+def _diag_reset(now):
+    return {"since": now, "n": 0, "gap_max": 0.0, "write_max": 0.0, "ack_max": 0.0,
+            "jpeg_max": 0, "ack_ok": 0, "ack_timeout": 0, "replies": {}}
+
+
+_diag = _diag_reset(time.monotonic())
+
+
+def _diag_print(msg):
+    print(f"[PANEL {time.strftime('%H:%M:%S')}] {msg}", flush=True)
+
+
+_DIAG_STALL = 1.0         # au-delà d'1 s sans image : on note ce que fait le programme
+_DIAG_MAX_DUMPS = 0      # captures de blocage coupées (remettre 12 pour enquêter)
+_diag_sender = None
+_diag_dumps = 0
+_diag_watch = None
+
+
+def _diag_stacks(gap):
+    """Écrit où en est le thread qui envoie les images, et un résumé des autres threads."""
+    import sys
+    import threading
+    import traceback
+    frames = sys._current_frames()
+    names = {t.ident: t.name for t in threading.enumerate()}
+    lines = [f"blocage en cours ({gap:.1f} s sans image) : voici ce que fait le programme"]
+    sender = frames.get(_diag_sender)
+    if sender is not None:
+        lines.append(f"  >> thread des images ({names.get(_diag_sender, '?')}) :")
+        for fs in traceback.extract_stack(sender)[-10:]:
+            lines.append(f"     {Path(fs.filename).name}:{fs.lineno} {fs.name} | {(fs.line or '').strip()[:110]}")
+    me = threading.get_ident()
+    for ident, frame in frames.items():
+        if ident in (_diag_sender, me):
+            continue
+        stack = traceback.extract_stack(frame)[-3:]
+        where = " < ".join(f"{Path(fs.filename).name}:{fs.lineno} {fs.name}" for fs in reversed(stack))
+        lines.append(f"  - {names.get(ident, ident)} : {where}")
+    _diag_print("\n".join(lines))
+
+
+def _diag_watchdog():
+    global _diag_dumps
+    dumped_for = None
+    while _diag_dumps < _DIAG_MAX_DUMPS:
+        time.sleep(0.25)
+        last = _diag_last_end
+        if last is None:
+            continue
+        gap = time.monotonic() - last
+        if gap > _DIAG_STALL and dumped_for != last:
+            dumped_for = last
+            _diag_dumps += 1
+            try:
+                _diag_stacks(gap)
+            except Exception as e:
+                _diag_print(f"capture impossible : {e}")
+
+
+def _diag_frame(t0, t_written, t1, size, reply):
+    global _diag, _diag_last_end
+    if not _DIAG:
+        return
+    global _diag_sender, _diag_watch
+    _diag_sender = __import__("threading").get_ident()
+    if _diag_watch is None:
+        import threading
+        _diag_watch = threading.Thread(target=_diag_watchdog, name="panel_diag", daemon=True)
+        _diag_watch.start()
+    d = _diag
+    if _diag_last_end is not None:
+        gap = t0 - _diag_last_end
+        d["gap_max"] = max(d["gap_max"], gap)
+        if gap > _DIAG_GAP:
+            _diag_print(f"trou de {gap:.2f} s sans image envoyée")
+    _diag_last_end = t1
+    d["n"] += 1
+    d["write_max"] = max(d["write_max"], t_written - t0)
+    d["ack_max"] = max(d["ack_max"], t1 - t_written)
+    d["jpeg_max"] = max(d["jpeg_max"], size)
+    if reply is None:
+        d["ack_timeout"] += 1
+        sig = "aucune (timeout 1 s)"
+    else:
+        d["ack_ok"] += 1
+        sig = f"{len(reply)} o: {reply[:16].hex(' ')}"
+    d["replies"][sig] = d["replies"].get(sig, 0) + 1
+    if sig not in _diag_seen and len(_diag_seen) < 3:
+        _diag_seen.add(sig)
+        _diag_print(f"nouvelle réponse de l'écran : {sig}")
+    if t1 - d["since"] >= _DIAG_EVERY:
+        top = sorted(d["replies"].items(), key=lambda kv: -kv[1])[:3]
+        replies = " | ".join(f"{n}x {k}" for k, n in top)
+        _diag_print(
+            f"{t1 - d['since']:.0f} s : {d['n']} images, trou max {d['gap_max']:.2f} s, "
+            f"envoi max {d['write_max'] * 1000:.0f} ms, attente réponse max {d['ack_max'] * 1000:.0f} ms, "
+            f"jpeg max {d['jpeg_max'] // 1024} Ko, réponses {d['ack_ok']} ok / {d['ack_timeout']} sans | {replies}")
+        _diag = _diag_reset(t1)
+
+
 import usb.core
 import usb.util
 from PIL import Image, ImageDraw, ImageFont
@@ -197,20 +309,34 @@ def _send_frame(ep_out, ep_in, jpeg_data: bytes):
     send_buf = bytes(chunks) + bytes((padded - num_chunks) * _CHUNK_SIZE)
     total_bytes = padded * _CHUNK_SIZE
 
+    t0 = time.monotonic()
     pos = 0
-    while pos < total_bytes:
-        remaining = total_bytes - pos
-        write_size = _USB_WRITE_SIZE if remaining >= _USB_WRITE_SIZE else min(2048, remaining)
-        ep_out.write(send_buf[pos:pos + write_size], timeout=5000)
-        pos += _USB_WRITE_SIZE
-        time.sleep(0.001)  # Petit délai entre écritures
+    try:
+        while pos < total_bytes:
+            remaining = total_bytes - pos
+            write_size = _USB_WRITE_SIZE if remaining >= _USB_WRITE_SIZE else min(2048, remaining)
+            ep_out.write(send_buf[pos:pos + write_size], timeout=5000)
+            pos += _USB_WRITE_SIZE
+            time.sleep(0.001)  # Petit délai entre écritures
+    except Exception as e:
+        if _DIAG:
+            _diag_print(f"erreur USB pendant l'envoi ({pos}/{total_bytes} octets, "
+                        f"{(time.monotonic() - t0) * 1000:.0f} ms) : {type(e).__name__}: {e}")
+        raise
+    t_written = time.monotonic()
 
     # ACK read - optional, some panels might not respond
+    reply = None
     try:
-        ep_in.read(512, timeout=1000)
+        reply = bytes(ep_in.read(512, timeout=1000))
     except usb.core.USBTimeoutError:
         pass  # ACK timeout non fatal
+    except Exception as e:
+        if _DIAG:
+            _diag_print(f"erreur USB en lisant la réponse : {type(e).__name__}: {e}")
+        raise
 
+    _diag_frame(t0, t_written, time.monotonic(), total_size, reply)
     _frame_delivered()
 
 

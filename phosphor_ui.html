@@ -395,8 +395,8 @@ body.valo.valo-show{overflow:hidden}
 .vd-eye .vd-src{margin-left:auto;letter-spacing:.06em;text-transform:none;font-weight:400;overflow:hidden;text-overflow:ellipsis}
 
 /* 01 Rang */
-.vd-emblem{position:relative;flex:1 1 auto;min-height:120px;display:grid;place-items:center}
-.vd-emblem svg{height:100%;max-height:340px;width:auto;max-width:100%;overflow:visible}
+.vd-emblem{position:relative;flex:1 1 auto;min-height:120px;display:grid;place-items:center;container-type:size}
+.vd-emblem svg{position:absolute;inset:0;margin:auto;width:100%;height:min(100%,340px);overflow:visible}  /* l'emblème suit la place disponible : le chiffre reste au centre */
 .vd-em-ring{fill:none;stroke:var(--r1);stroke-width:1.5;stroke-dasharray:4 10;transform-origin:100px 100px;animation:vd-spin 22s linear infinite}
 .vd-em-ring2{fill:none;stroke:var(--r12);stroke-width:8;stroke-dasharray:60 300;transform-origin:100px 100px;animation:vd-spin 6s linear infinite reverse}
 .vd-em-out{fill:none;stroke:var(--tier);stroke-width:3;transition:stroke .6s}
@@ -406,7 +406,7 @@ body.valo.valo-show{overflow:hidden}
 .vd-em-div rect.on{fill:var(--tier)}
 @keyframes vd-spin{to{transform:rotate(360deg)}}
 @keyframes vd-breathe{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.94);opacity:.82}}
-.vd-em-num{position:absolute;font:800 44px/1 var(--font-display);color:var(--ink)}
+.vd-em-num{position:absolute;font:800 min(44px,19cqh)/1 var(--font-display);color:var(--ink)}
 .vd-tier{font:800 clamp(44px,6.4vh,70px)/1 var(--font-display);letter-spacing:.02em;text-transform:uppercase;color:var(--tier);transform:skewX(-6deg);flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .vd-rr{display:flex;align-items:baseline;gap:10px;flex:none}
 .vd-big{font:800 clamp(40px,5.6vh,60px)/1 var(--font-display);color:var(--ink)}
@@ -518,6 +518,12 @@ body.valo.valo-show{overflow:hidden}
 .vd-kdbar .d{background:var(--r1);flex:var(--dd) 1 0}
 .vd-card-foot{display:flex;justify-content:space-between;gap:8px;font:600 12px/1.2 var(--font-terminal);color:var(--dim);letter-spacing:.06em;white-space:nowrap}
 .vd-card-foot b{color:var(--ink)}
+.vd-card-note{display:flex;align-items:baseline;gap:7px;white-space:nowrap;overflow:hidden}
+.vd-card-note b{font:800 clamp(20px,3vh,28px)/1 var(--font-display);transform:skewX(-8deg)}
+.vd-card-note strong{padding:2px 6px;font:800 12px/1.2 var(--font-display);background:#24141a;color:var(--ink);transform:skewX(-10deg)}
+.vd-card-note.top strong{background:var(--ink);color:var(--bg)}
+.vd-card-note.low strong{background:var(--r1)}
+.vd-card-note small{font:600 11px/1 var(--font-terminal);letter-spacing:.06em;color:var(--dim)}
 
 /* Pied : bandeau défilant */
 .vd-foot{display:flex;align-items:center;gap:16px;height:30px;border-top:1px solid var(--line);padding-top:8px}
@@ -568,8 +574,8 @@ body.valo.valo-show{overflow:hidden}
 
 /* La page force la police terminal partout (body *{…!important}) : on rétablit Oxanium ici */
 #valo-dash,#valo-dash *,#valo-wipe *{font-family:var(--font-display)!important}
-#valo-dash .vd-kicker,#valo-dash .vd-chip,#valo-dash .vd-btn,#valo-dash .vd-eye,#valo-dash .vd-eye *,#valo-dash .vd-rr-unit,#valo-dash .vd-kv dt,#valo-dash .vd-live-kicker,#valo-dash .vd-live-sub,#valo-dash .vd-team-l,#valo-dash .vd-live-meta dt,#valo-dash .vd-ringtxt span,#valo-dash .vd-streak,#valo-dash .vd-tile span,#valo-dash .vd-card-where,#valo-dash .vd-card-kda,#valo-dash .vd-card-foot,#valo-dash .vd-status,#valo-dash .vd-ladder span,#valo-dash .vd-cards li.empty,#valo-wipe .vw-txt span{font-family:var(--font-terminal)!important}
-#valo-dash .vd-card-kda b,#valo-dash .vd-card-foot b,#valo-dash .vd-streak b,#valo-dash .vd-eye b{font-family:var(--font-display)!important}
+#valo-dash .vd-kicker,#valo-dash .vd-chip,#valo-dash .vd-btn,#valo-dash .vd-eye,#valo-dash .vd-eye *,#valo-dash .vd-rr-unit,#valo-dash .vd-kv dt,#valo-dash .vd-live-kicker,#valo-dash .vd-live-sub,#valo-dash .vd-team-l,#valo-dash .vd-live-meta dt,#valo-dash .vd-ringtxt span,#valo-dash .vd-streak,#valo-dash .vd-tile span,#valo-dash .vd-card-where,#valo-dash .vd-card-kda,#valo-dash .vd-card-foot,#valo-dash .vd-card-note small,#valo-dash .vd-status,#valo-dash .vd-ladder span,#valo-dash .vd-cards li.empty,#valo-wipe .vw-txt span{font-family:var(--font-terminal)!important}
+#valo-dash .vd-card-kda b,#valo-dash .vd-card-foot b,#valo-dash .vd-card-note b,#valo-dash .vd-card-note strong,#valo-dash .vd-streak b,#valo-dash .vd-eye b{font-family:var(--font-display)!important}
 .vw-txt b{text-transform:uppercase}
 
 /* Artwork ASCII de l'agent (agents_ascii/<agent>.txt), à droite du panneau En direct */
@@ -745,7 +751,7 @@ body.valo.valo-show{overflow:hidden}
 .vr-team h3{margin:0 0 3px;display:flex;justify-content:space-between;font:800 14px/1 var(--font-display);letter-spacing:.2em;text-transform:uppercase;color:var(--ink)}
 .vr-team h3::after{display:none}
 .vr-team.enemy h3{color:var(--hot)}
-.vr-row{display:grid;grid-template-columns:minmax(0,1.7fr) 74px repeat(4,minmax(0,.55fr));gap:6px;align-items:center;padding:6px 9px;background:#120a0e;border-left:3px solid transparent;font:700 14px/1.1 var(--font-display)}
+.vr-row{display:grid;grid-template-columns:minmax(0,1.7fr) 74px repeat(4,minmax(0,.55fr)) 64px;gap:6px;align-items:center;padding:6px 9px;background:#120a0e;border-left:3px solid transparent;font:700 14px/1.1 var(--font-display)}
 .vr-row.head{background:none;padding-top:0;padding-bottom:0;font:600 10px/1 var(--font-terminal);letter-spacing:.16em;color:var(--dim);text-transform:uppercase}
 .vr-row.me{background:var(--r12);border-left-color:var(--r1)}
 .vr-row.mate{border-left-color:var(--r7)}
@@ -753,6 +759,27 @@ body.valo.valo-show{overflow:hidden}
 .vr-row span:first-child{text-align:left}
 .vr-row span:first-child small{font:400 12px/1 var(--font-terminal);color:var(--dim);margin-left:8px}
 .vr-row em{font-style:normal;margin-left:6px;padding:1px 5px;background:var(--ink);color:var(--bg);font:800 9px/1.4 var(--font-display);letter-spacing:.1em;vertical-align:middle}
+.vr-row .g{display:inline-block;min-width:22px;margin-left:5px;padding:1px 3px;font:800 10px/1.3 var(--font-display);text-align:center;background:#24141a;color:var(--dim)}
+.vr-row .g.top{background:var(--ink);color:var(--bg)}.vr-row .g.low{background:var(--r1);color:var(--ink)}
+.vr-note{display:flex;align-items:flex-end;gap:22px;margin-left:34px;min-width:0}
+.vr-note-main{display:flex;flex-direction:column;gap:6px;flex:none}
+.vr-note-main div{display:flex;align-items:baseline;gap:10px}
+.vr-note-main b{font:800 clamp(52px,7.6vh,84px)/.9 var(--font-display);transform:skewX(-8deg)}
+.vr-note-main i{font-style:normal;font:700 14px/1 var(--font-terminal);color:var(--dim)}
+.vr-note-main strong{padding:5px 10px;font:800 clamp(20px,2.8vh,28px)/1 var(--font-display);background:#24141a;color:var(--ink);transform:skewX(-10deg)}
+.vr-note[data-tier=top] .vr-note-main strong{background:var(--ink);color:var(--bg)}
+.vr-note[data-tier=low] .vr-note-main strong{background:var(--r1)}
+.vr-note-main small{font:600 11px/1 var(--font-terminal);letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+.vr-parts{display:grid;grid-template-columns:repeat(2,minmax(0,170px));gap:5px 18px;padding-bottom:6px}
+.vr-parts .p{display:grid;grid-template-columns:64px minmax(0,1fr) 24px;gap:8px;align-items:center;font:600 10px/1 var(--font-terminal);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.vr-parts .p i{position:relative;display:block;height:7px;background:#24141a}
+.vr-parts .p i::before{content:"";position:absolute;inset:0 auto 0 0;width:calc(var(--f) * 100%);background:var(--ink)}
+.vr-parts .p.low i::before{background:var(--r1)}
+.vr-parts .p i::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--dim)}
+.vr-parts .p span:last-child{text-align:right;color:var(--ink)}
+.vd-enter .vr-parts .p i::before{animation:vr-bar .8s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(.5s + var(--i) * 80ms);transform-origin:left}
+@media(max-width:1500px){.vr-parts{display:none}}
+@media(max-width:1100px){.vr-top{flex-wrap:wrap}.vr-note{margin-left:0}}
 .vd-enter .vr-row:not(.head){animation:vr-pop .4s both;animation-delay:calc(.5s + var(--i) * 45ms)}
 #valo-recap.vd-enter .vr-result b{animation:vf-name .7s cubic-bezier(.2,.8,.2,1) .15s both}
 #valo-recap.vd-enter .vr-top>*{animation:vd-drop .5s cubic-bezier(.2,.8,.2,1) both}
@@ -760,7 +787,7 @@ body.valo.valo-show{overflow:hidden}
 @media(max-width:1100px){#valo-recap{position:absolute;min-height:100vh;overflow:visible}.vr-grid{grid-template-columns:minmax(0,1fr)}.vr-eco{min-height:220px}}
 /* Polices (la page force la police terminal partout) */
 #valo-recap,#valo-recap *{font-family:var(--font-display)!important}
-#valo-recap .vd-kicker,#valo-recap .vd-eye,#valo-recap .vd-eye *,#valo-recap .vd-btn,#valo-recap .vd-tile span,#valo-recap .vd-tile em,#valo-recap .vr-kda small,#valo-recap .vr-r small,#valo-recap .vr-row.head,#valo-recap .vr-row.head *,#valo-recap .vr-row span:first-child small,#valo-dash .vd-roster .lbl,#valo-dash .vd-slot small,#valo-dash .vd-party .p small{font-family:var(--font-terminal)!important}
+#valo-recap .vd-kicker,#valo-recap .vd-eye,#valo-recap .vr-note-main i,#valo-recap .vr-note-main small,#valo-recap .vr-parts .p,#valo-recap .vd-eye *,#valo-recap .vd-btn,#valo-recap .vd-tile span,#valo-recap .vd-tile em,#valo-recap .vr-kda small,#valo-recap .vr-r small,#valo-recap .vr-row.head,#valo-recap .vr-row.head *,#valo-recap .vr-row span:first-child small,#valo-dash .vd-roster .lbl,#valo-dash .vd-slot small,#valo-dash .vd-party .p small{font-family:var(--font-terminal)!important}
 #valo-recap .vd-eye b{font-family:var(--font-display)!important}
 
 /* ── Derniers matchs : 5 cartes dans la colonne du milieu ── */
@@ -1052,6 +1079,11 @@ body.valo.valo-show{overflow:hidden}
 .va p{margin:0;font:700 16px/1.35 var(--font-display)}
 .va i{position:absolute;left:0;bottom:0;height:2px;background:var(--va-c,#D0021B);animation:va-life linear both;animation-duration:var(--life,6s)}
 .va.good{--va-c:#f0ede8}.va.bad{--va-c:#ff4d5e}.va.pc{--va-c:#ffb347}
+.va.epic{--va-c:#ffc83c;box-shadow:0 0 34px rgba(255,200,60,.45),0 10px 30px rgba(0,0,0,.55)}
+.va.bad,.va.epic{animation:va-in .45s cubic-bezier(.2,.9,.2,1.15) both,va-shake .5s .4s ease-out both}
+@keyframes va-shake{0%,100%{translate:0}20%{translate:-7px}40%{translate:6px}60%{translate:-4px}80%{translate:2px}}
+.va.out.bad,.va.out.epic{animation:va-out .45s cubic-bezier(.6,0,.8,.2) both}
+@media(prefers-reduced-motion:reduce){.va.bad,.va.epic,.va.out.bad,.va.out.epic{animation:none}}
 @keyframes va-in{from{opacity:0;transform:translateX(60px) skewX(-6deg)}to{opacity:1;transform:none}}
 @keyframes va-out{to{opacity:0;transform:translateX(-40px)}}
 @keyframes va-life{from{width:100%}to{width:0}}
@@ -1212,7 +1244,7 @@ body.vx-on #valo-alerts{top:236px;left:44px;max-width:min(500px,calc(100vw - 32p
 .vg-halo{transform-origin:100px 100px;animation:vg-halo 3.4s ease-in-out infinite}
 .vg-div rect{fill:none;stroke:#e8b84a;stroke-width:2;transition:fill .4s}
 .vg-div rect.on{fill:#f0c55a;stroke:#fff3c4}
-.vd-emblem.gold .vd-em-num{color:#2a1a04;font-size:34px;text-shadow:0 1px 0 rgba(255,248,220,.6);animation:vg-float 3.4s ease-in-out infinite}
+.vd-emblem.gold .vd-em-num{color:#2a1a04;font-size:min(34px,14cqh);text-shadow:0 1px 0 rgba(255,248,220,.6);animation:vg-float 3.4s ease-in-out infinite}
 @keyframes vg-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
 @keyframes vg-shine{0%,55%{transform:skewX(-18deg) translateX(0)}100%{transform:skewX(-18deg) translateX(330px)}}
 @keyframes vg-halo{0%,100%{opacity:.75;transform:scale(.97)}50%{opacity:1;transform:scale(1.02)}}
@@ -1321,7 +1353,82 @@ body.vx-on #valo-alerts{top:236px;left:44px;max-width:min(500px,calc(100vw - 32p
   .vi-top{grid-column:1;grid-row:1;grid-template-columns:minmax(0,1fr) auto;row-gap:12px}.vi-head{grid-column:1/-1}
   .vi-board{grid-column:1;grid-row:3;grid-template-columns:minmax(0,1fr);grid-template-rows:none}.vi-board>*{grid-column:1/-1!important;min-height:240px}.vi-kpis,.vi-facts{min-height:0}}
 body.vi-on #valo-alerts{top:236px;left:44px;max-width:min(500px,calc(100vw - 32px))}
-</style></head><body><div class="bg-floor" aria-hidden="true"><i></i></div><div class="crt-overlay"></div><main class="app"><header><div class="hz logo-mark" aria-hidden="true"></div><div class="brand"><h1 class="glitch" data-text="HEDJI’S DASHBOARD">HEDJI’S DASHBOARD</h1><p class="muted">Box Screen Control <span class="on">//</span> Écran 1920 × 462</p></div><div class="sweep" aria-hidden="true"><i></i></div><div class="services" role="status"><span class="service" id="conn">Connexion…</span><span class="service" id="hostip">Serveur local</span><span class="service mono" id="clock">--:--:--</span></div><span class="shortcuts"><span class="kc">F</span> visualisation <span class="kc">↑</span><span class="kc">↓</span> luminosité</span><details class="pnl journal"><summary>Journal</summary><div id="log"></div></details><button type="button" class="save-btn" id="valo-back" hidden title="Revenir au dashboard Valorant">◆ Dashboard Valorant</button><button class="save-btn" id="crt-toggle" aria-pressed="false">Effet CRT</button></header><div class="dashboard-grid"><div class="dashboard-column"><section class="pnl hero-grid" id="overview" aria-label="Vue d’ensemble"><div class="preview"><span class="live-tag" aria-hidden="true">LIVE · APERÇU ÉCRAN</span><canvas id="screen" aria-label="Visualisation simplifiée du signal audio"></canvas></div><div class="progress" role="progressbar" aria-label="Progression du morceau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="pbar"></div></div><div class="cascade" title="Ordre automatique : les paroles d’abord, puis Valorant si le jeu est ouvert, sinon la visualisation musicale, sinon l’ambiance au repos."><ol id="cascade-steps" aria-label="Affichage en cours"><li data-step="lyrics">Paroles</li><li class="arrow" aria-hidden="true">→</li><li data-step="valorant">Valorant</li><li class="arrow" aria-hidden="true">→</li><li data-step="audio">Visualisation</li><li class="arrow" aria-hidden="true">→</li><li data-step="idle">Ambiance au repos</li></ol><label class="force-viz" title="Afficher la visualisation musicale même quand il y a des paroles. Raccourci : F">Visu forcée <button id="force-viz-btn" class="save-btn">[ off ]</button></label></div><div class="now"><div class="track"><span class="eyebrow">Lecture en cours · <span id="play">En attente</span></span><h2 id="trackname">En attente d’un morceau</h2></div><div class="stats"><div class="stat"><small>Position</small><b class="mono" id="ptime">0:00</b></div><div class="stat"><small>Tempo</small><b><span id="bpm">—</span> <span class="unit">BPM</span> <span id="beatdot">·</span></b></div><div class="stat"><small>Niveau</small><div class="levels" role="img" aria-label="Niveau audio gauche et droite"><span>G</span><div class="level"><div id="vuL"></div></div><span>D</span><div class="level"><div id="vuR"></div></div></div></div></div></div><div hidden=""><canvas id="mini"></canvas><b id="modename">Automatique</b><span id="peak"></span><span id="uptime"></span><span id="screen-mode">Automatique</span><span id="cascade-state">En attente</span><span id="cascade-track"></span></div></section><section class="pnl lyrics-panel" aria-labelledby="lyrics-section"><div class="section-head"><div><h2 id="lyrics-section"><i aria-hidden="true">01</i>Paroles</h2></div><span class="muted">Source : <span id="lyrics-source-name">Automatique</span></span><button id="lyrics-choose-btn" aria-haspopup="dialog" title="Le meilleur choix s’affiche automatiquement. Ce menu montre les autres versions si tu veux en prendre une autre.">Choisir les paroles</button></div><div id="lyrics-current"><p id="lyrics-live-status" class="hint">Connexion aux paroles…</p><div id="lyrics-previous-line-3" class="lyrics-context far farther"></div><div id="lyrics-previous-line-2" class="lyrics-context far"></div><div id="lyrics-previous-line" class="lyrics-context"></div><div id="lyrics-current-line" role="status" aria-live="polite">En attente d’un morceau…</div><div id="lyrics-next-line" class="lyrics-context"></div><div id="lyrics-next-line-2" class="lyrics-context far"></div><div id="lyrics-next-line-3" class="lyrics-context far farther"></div></div><div id="lyrics-feedback" role="status" style="display:none"><span></span></div><div class="lyrics-search"><input id="lyrics-artist" aria-label="Artiste" placeholder="Artiste"><input id="lyrics-title" aria-label="Titre du morceau" placeholder="Titre du morceau"><button id="lyrics-search-btn" class="save-btn">Rechercher les paroles</button></div><div class="slider-row offset-row"><label for="lyrics-offset" title="Positif : retarder les paroles. Négatif : les avancer. Le réglage est mémorisé pour ce morceau.">Décalage</label><button type="button" class="save-btn" data-offset-step="-0.1" aria-label="Avancer les paroles de 0,1 seconde">− 0,1</button><input type="range" id="lyrics-offset" min="-60" max="60" step="0.1" value="0"><button type="button" class="save-btn" data-offset-step="0.1" aria-label="Retarder les paroles de 0,1 seconde">+ 0,1</button><span class="slider-val">0,0 s</span><button type="button" class="save-btn" id="lyrics-offset-reset">Remettre à 0</button></div><dialog id="lyrics-menu" aria-labelledby="lyrics-menu-title"><div class="lm-head"><div><span class="eyebrow">Choisir les paroles</span><h3 id="lyrics-menu-title">Morceau en cours</h3></div><button type="button" class="save-btn" id="lyrics-menu-close">Fermer</button></div><p id="lyrics-menu-status" class="hint" role="status"></p><ul id="lyrics-menu-list" class="lm-list"></ul><div class="lm-foot"><button type="button" class="save-btn" id="lyrics-menu-reset" hidden>Revenir au choix automatique</button><button type="button" class="save-btn" id="lyrics-menu-refresh">Relancer la recherche</button></div></dialog></section></div><div class="dashboard-column"><section class="pnl case-panel" aria-label="Boîtier 3D"><div class="case-heading"><h2><i aria-hidden="true">02</i>Boîtier</h2><div class="view-buttons"><button class="save-btn" data-view="tq">3/4</button><button class="save-btn" data-view="face">Vitre</button><button class="save-btn" data-view="rear">Arrière</button><button class="save-btn" data-view="side">Côté</button><button class="save-btn" data-view="top">Dessus</button></div></div><div class="case-stage"><div id="pc3dwrap" role="img" aria-label="Boîtier Thermalright en ASCII 3D"><div id="pc3d"></div></div><div class="stage-caption"><span>Thermalright · 8 ventilateurs RGB</span><span>Glisser pour tourner</span></div></div><div class="case-options"><button class="preview-switch" data-case-option="auto" role="switch" aria-checked="true" title="Le boîtier tourne doucement"><span><strong>Rotation auto</strong></span><i></i></button><button class="preview-switch" data-case-option="explode" role="switch" aria-checked="false" title="Écarter les panneaux"><span><strong>Vue éclatée</strong></span><i></i></button><button class="preview-switch" data-case-option="interior" role="switch" aria-checked="true" title="Carte mère, ventilateurs et GPU"><span><strong>Intérieur visible</strong></span><i></i></button></div><div class="case-sliders"><label class="preview-slider">Zoom<input type="range" id="case-zoom" min=".35" max="1.1" step=".01" value=".64"></label><label class="preview-slider">Animation<input type="range" id="case-speed" min="0" max="10" step="1" value="5"></label></div></section><section class="pnl valorant-panel" id="valorant" aria-labelledby="valorant-section"><div class="val-head"><h2 id="valorant-section"><i aria-hidden="true">04</i>Valorant</h2><span class="val-status" id="val-status" role="status">○ Jeu fermé</span><button class="save-btn" id="val-refresh" title="Recharger rang et matchs depuis HenrikDev">Actualiser</button></div><div class="val-body"><div class="val-rank"><span class="val-diamond" aria-hidden="true"></span><div><b id="val-tier">Rang inconnu</b><div class="val-rrbar"><i id="val-rrfill"></i></div><span class="mono" id="val-rr"></span></div></div><div class="val-live"><span class="eyebrow">En direct</span><b id="val-live-main">Jeu fermé</b><span class="muted" id="val-live-sub"></span></div></div><ol class="val-matches" id="val-matches" aria-label="Derniers matchs"></ol><div class="val-foot"><div class="val-panel-modes" role="group" aria-label="Place de Valorant sur l’écran"><span class="muted">Écran :</span><button class="save-btn" data-val-panel="after_lyrics" aria-pressed="false" title="Paroles d’abord, puis Valorant quand le jeu est ouvert">Après les paroles</button><button class="save-btn" data-val-panel="priority" aria-pressed="false" title="Valorant passe avant les paroles quand le jeu est ouvert">Prioritaire</button><button class="save-btn" data-val-panel="off" aria-pressed="false" title="Jamais sur l’écran physique">Off</button></div><span class="hint" id="val-source"></span></div></section>
+
+/* ── Paroles : un panneau à part entière, sous le rang (dashboard) ou sous l'agent (écrans Stats, sélection, partie) ── */
+.vl{--r1:#D0021B;--ink:#f0ede8;--dim:#a8a4b0;--hot:#ff4d5e;--fs:clamp(19px,2.4vh,25px);box-sizing:border-box;min-width:0;color:var(--ink)}
+body:not(.valo-show) .vl{display:none!important}
+.vl p{margin:0}
+.vl-head{display:flex;align-items:center;gap:10px;min-width:0}
+.vl-eq{display:flex;align-items:flex-end;gap:2px;height:12px;flex:none}
+.vl-eq b{width:3px;background:var(--r1);animation:vl-eq .9s ease-in-out infinite}
+.vl-eq b:nth-child(2){animation-delay:-.3s}.vl-eq b:nth-child(3){animation-delay:-.6s}
+@keyframes vl-eq{0%,100%{height:3px}50%{height:12px}}
+.vl-track{flex:1 1 auto;min-width:0;font:600 10px/1.2 var(--font-terminal);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vl-time{flex:none;font:600 10px/1.2 var(--font-terminal);letter-spacing:.06em;color:#6f6a78;font-variant-numeric:tabular-nums}
+/* Les trois lignes : même rythme quelle que soit la longueur, la ligne en cours centrée dans une zone de 2 lignes */
+.vl-lines{display:grid;grid-template-rows:auto calc(var(--fs) * 2.36) auto;row-gap:8px;padding:2px 0}
+.vl-prev,.vl-next{font:600 calc(var(--fs) * .6)/1.3 var(--font-display);text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1.3em}
+.vl-prev{color:#5d5764}
+.vl-next{color:#8f8999}
+.vl-cur{display:flex;align-items:center;min-width:0;overflow:hidden;font-size:var(--fs)}
+.vl-cur span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font:800 1em/1.18 var(--font-display);text-transform:uppercase;letter-spacing:.02em;
+  color:var(--ink);text-shadow:0 0 18px rgba(208,2,27,.5)}
+.vl-cur.short span{font-size:1.22em;letter-spacing:.035em}
+.vl-cur.long span{font-size:.66em;line-height:1.16;-webkit-line-clamp:3}  /* les très longues lignes passent sur 3 lignes plus petites, sans être coupées */
+.vl-cur.in span{animation:vl-in .45s cubic-bezier(.2,.8,.2,1)}
+.vl-cur.idle span{color:var(--hot);font-size:1.3em;letter-spacing:.3em}
+.vl-cur.st span{font-size:.7em;font-weight:600;color:var(--dim);text-shadow:none;text-transform:none;letter-spacing:.01em}
+.vl-lines.in .vl-prev,.vl-lines.in .vl-next{animation:vl-fade .45s ease both}
+@keyframes vl-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes vl-fade{from{opacity:0}to{opacity:1}}
+.vl-bar{height:2px;background:#2a1419}
+.vl-bar i{display:block;height:100%;width:calc(var(--p,0) * 1%);background:var(--r1);transition:width .5s linear}
+.vl,.vl *{font-family:var(--font-display)!important}
+.vl .vl-track,.vl .vl-time,.vl .vd-eye,.vl .vd-eye span{font-family:var(--font-terminal)!important}
+@media(prefers-reduced-motion:reduce){.vl *{animation:none!important}}
+/* Dans le dashboard : un panneau de la colonne de gauche, sous le rang */
+.vl.in-dash{flex:none;display:flex;flex-direction:column;gap:10px}
+.vl.in-dash .vl-bar{margin-top:2px}
+/* Sous l'agent : un bloc de plus dans le bas du héros, dans le même style que ses chiffres */
+.vl.in-hero{--fs:clamp(17px,2.15vh,22px);display:flex;flex-direction:column;gap:8px;margin-top:12px;padding:11px 14px 12px;background:rgba(13,9,14,.94);border:1px solid var(--line,#2a1419);border-left:3px solid var(--r1)}
+.vl.in-hero .vl-eye{display:none}
+
+/* Paroles : entrée et sortie en motion design (auto ou touche L) */
+.vl.in-hero{position:relative;overflow:hidden}
+/* Un élément à lui (les panneaux du dashboard utilisent déjà ::before et ::after) qui couvre tout le panneau, bords compris */
+.vl-wipe{position:absolute;inset:-1px;z-index:5;pointer-events:none;display:block;background:linear-gradient(100deg,var(--r1) 0,var(--r1) 72%,#ff4d5e 100%);transform:scaleX(0);transform-origin:left}
+.vl.enter .vl-wipe{animation:vl-wipe-in .66s cubic-bezier(.7,0,.2,1) .32s both}
+.vl.leave .vl-wipe{animation:vl-wipe-out .42s cubic-bezier(.7,0,.2,1) both}
+@keyframes vl-wipe-in{0%{transform:scaleX(0);transform-origin:left}48%{transform:scaleX(1);transform-origin:left}52%{transform:scaleX(1);transform-origin:right}100%{transform:scaleX(0);transform-origin:right}}
+@keyframes vl-wipe-out{0%{transform:scaleX(0);transform-origin:right}100%{transform:scaleX(1);transform-origin:right}}
+.vl.leave>*:not(.vl-wipe){animation:vl-out .3s ease both}
+@keyframes vl-out{to{opacity:0;transform:translateX(-10px)}}
+/* Le panneau s'ouvre en hauteur : le rang (ou le bloc de l'agent) lui fait de la place en douceur */
+.vl.enter{animation:vl-grow .42s cubic-bezier(.2,.8,.2,1) both}
+.vl.leave{animation:vl-shrink .45s cubic-bezier(.6,0,.4,1) .38s both}
+@keyframes vl-grow{from{max-height:0;padding-top:0;padding-bottom:0;margin-top:0}to{max-height:340px}}
+@keyframes vl-shrink{from{max-height:340px}to{max-height:0;padding-top:0;padding-bottom:0;margin-top:0;opacity:0}}
+/* Puis le contenu se pose, élément par élément */
+.vl.enter .vl-eye,.vl.enter .vl-head{animation:vl-slide .5s cubic-bezier(.2,.8,.2,1) .66s both}
+.vl.enter .vl-eq b{animation:vl-eq .9s ease-in-out infinite,vl-pop .4s cubic-bezier(.2,.8,.2,1) .74s both}
+.vl.enter .vl-prev{animation:vl-slide .5s cubic-bezier(.2,.8,.2,1) .74s both}
+.vl.enter .vl-cur span{animation:vl-hit .7s cubic-bezier(.2,.8,.2,1) .8s both}
+.vl.enter .vl-next{animation:vl-slide .5s cubic-bezier(.2,.8,.2,1) .9s both}
+.vl.enter .vl-bar{animation:vl-slide .4s ease .96s both}
+.vl.enter .vl-bar i{animation:vl-draw .9s cubic-bezier(.2,.8,.2,1) 1s both}
+@keyframes vl-slide{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:none}}
+@keyframes vl-pop{from{transform:scaleY(0)}to{transform:none}}
+@keyframes vl-draw{from{transform:scaleX(0)}to{transform:none}}
+.vl-bar i{transform-origin:left}
+/* La ligne en cours arrive en biais, avec un petit glitch rouge et blanc */
+@keyframes vl-hit{
+  0%{opacity:0;transform:translateX(-26px) skewX(-14deg);text-shadow:-6px 0 0 rgba(255,77,94,.9),6px 0 0 rgba(240,237,232,.7)}
+  45%{opacity:1;transform:translateX(4px) skewX(-6deg);text-shadow:-3px 0 0 rgba(255,77,94,.8),3px 0 0 rgba(240,237,232,.5)}
+  70%{transform:translateX(-1px) skewX(0);text-shadow:2px 0 0 rgba(255,77,94,.6),-2px 0 0 rgba(240,237,232,.4)}
+  100%{opacity:1;transform:none;text-shadow:0 0 18px rgba(208,2,27,.5)}}
+@media(prefers-reduced-motion:reduce){.vl-wipe{display:none}}
+#valo-dash #vd-exit kbd{display:inline-block;margin-left:8px;padding:2px 5px;border:1px solid currentColor;font:700 10px/1 var(--font-terminal)!important;opacity:.75}
+</style></head><body><div class="bg-floor" aria-hidden="true"><i></i></div><div class="crt-overlay"></div><main class="app"><header><div class="hz logo-mark" aria-hidden="true"></div><div class="brand"><h1 class="glitch" data-text="HEDJI’S DASHBOARD">HEDJI’S DASHBOARD</h1><p class="muted">Box Screen Control <span class="on">//</span> Écran 1920 × 462</p></div><div class="sweep" aria-hidden="true"><i></i></div><div class="services" role="status"><span class="service" id="conn">Connexion…</span><span class="service" id="hostip">Serveur local</span><span class="service mono" id="clock">--:--:--</span></div><span class="shortcuts"><span class="kc">F</span> visualisation <span class="kc">↑</span><span class="kc">↓</span> luminosité</span><details class="pnl journal"><summary>Journal</summary><div id="log"></div></details><button type="button" class="save-btn" id="valo-back" hidden title="Revenir au dashboard Valorant (touche V)" aria-keyshortcuts="V">◆ Dashboard Valorant · V</button><button class="save-btn" id="crt-toggle" aria-pressed="false">Effet CRT</button></header><div class="dashboard-grid"><div class="dashboard-column"><section class="pnl hero-grid" id="overview" aria-label="Vue d’ensemble"><div class="preview"><span class="live-tag" aria-hidden="true">LIVE · APERÇU ÉCRAN</span><canvas id="screen" aria-label="Visualisation simplifiée du signal audio"></canvas></div><div class="progress" role="progressbar" aria-label="Progression du morceau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="pbar"></div></div><div class="cascade" title="Ordre automatique : les paroles d’abord, puis Valorant si le jeu est ouvert, sinon la visualisation musicale, sinon l’ambiance au repos."><ol id="cascade-steps" aria-label="Affichage en cours"><li data-step="lyrics">Paroles</li><li class="arrow" aria-hidden="true">→</li><li data-step="valorant">Valorant</li><li class="arrow" aria-hidden="true">→</li><li data-step="audio">Visualisation</li><li class="arrow" aria-hidden="true">→</li><li data-step="idle">Ambiance au repos</li></ol><label class="force-viz" title="Afficher la visualisation musicale même quand il y a des paroles. Raccourci : F">Visu forcée <button id="force-viz-btn" class="save-btn">[ off ]</button></label></div><div class="now"><div class="track"><span class="eyebrow">Lecture en cours · <span id="play">En attente</span></span><h2 id="trackname">En attente d’un morceau</h2></div><div class="stats"><div class="stat"><small>Position</small><b class="mono" id="ptime">0:00</b></div><div class="stat"><small>Tempo</small><b><span id="bpm">—</span> <span class="unit">BPM</span> <span id="beatdot">·</span></b></div><div class="stat"><small>Niveau</small><div class="levels" role="img" aria-label="Niveau audio gauche et droite"><span>G</span><div class="level"><div id="vuL"></div></div><span>D</span><div class="level"><div id="vuR"></div></div></div></div></div></div><div hidden=""><canvas id="mini"></canvas><b id="modename">Automatique</b><span id="peak"></span><span id="uptime"></span><span id="screen-mode">Automatique</span><span id="cascade-state">En attente</span><span id="cascade-track"></span></div></section><section class="pnl lyrics-panel" aria-labelledby="lyrics-section"><div class="section-head"><div><h2 id="lyrics-section"><i aria-hidden="true">01</i>Paroles</h2></div><span class="muted">Source : <span id="lyrics-source-name">Automatique</span></span><button id="lyrics-choose-btn" aria-haspopup="dialog" title="Le meilleur choix s’affiche automatiquement. Ce menu montre les autres versions si tu veux en prendre une autre.">Choisir les paroles</button></div><div id="lyrics-current"><p id="lyrics-live-status" class="hint">Connexion aux paroles…</p><div id="lyrics-previous-line-3" class="lyrics-context far farther"></div><div id="lyrics-previous-line-2" class="lyrics-context far"></div><div id="lyrics-previous-line" class="lyrics-context"></div><div id="lyrics-current-line" role="status" aria-live="polite">En attente d’un morceau…</div><div id="lyrics-next-line" class="lyrics-context"></div><div id="lyrics-next-line-2" class="lyrics-context far"></div><div id="lyrics-next-line-3" class="lyrics-context far farther"></div></div><div id="lyrics-feedback" role="status" style="display:none"><span></span></div><div class="lyrics-search"><input id="lyrics-artist" aria-label="Artiste" placeholder="Artiste"><input id="lyrics-title" aria-label="Titre du morceau" placeholder="Titre du morceau"><button id="lyrics-search-btn" class="save-btn">Rechercher les paroles</button></div><div class="slider-row offset-row"><label for="lyrics-offset" title="Positif : retarder les paroles. Négatif : les avancer. Le réglage est mémorisé pour ce morceau.">Décalage</label><button type="button" class="save-btn" data-offset-step="-0.1" aria-label="Avancer les paroles de 0,1 seconde">− 0,1</button><input type="range" id="lyrics-offset" min="-60" max="60" step="0.1" value="0"><button type="button" class="save-btn" data-offset-step="0.1" aria-label="Retarder les paroles de 0,1 seconde">+ 0,1</button><span class="slider-val">0,0 s</span><button type="button" class="save-btn" id="lyrics-offset-reset">Remettre à 0</button></div><dialog id="lyrics-menu" aria-labelledby="lyrics-menu-title"><div class="lm-head"><div><span class="eyebrow">Choisir les paroles</span><h3 id="lyrics-menu-title">Morceau en cours</h3></div><button type="button" class="save-btn" id="lyrics-menu-close">Fermer</button></div><p id="lyrics-menu-status" class="hint" role="status"></p><ul id="lyrics-menu-list" class="lm-list"></ul><div class="lm-foot"><button type="button" class="save-btn" id="lyrics-menu-reset" hidden>Revenir au choix automatique</button><button type="button" class="save-btn" id="lyrics-menu-refresh">Relancer la recherche</button></div></dialog></section></div><div class="dashboard-column"><section class="pnl case-panel" aria-label="Boîtier 3D"><div class="case-heading"><h2><i aria-hidden="true">02</i>Boîtier</h2><div class="view-buttons"><button class="save-btn" data-view="tq">3/4</button><button class="save-btn" data-view="face">Vitre</button><button class="save-btn" data-view="rear">Arrière</button><button class="save-btn" data-view="side">Côté</button><button class="save-btn" data-view="top">Dessus</button></div></div><div class="case-stage"><div id="pc3dwrap" role="img" aria-label="Boîtier Thermalright en ASCII 3D"><div id="pc3d"></div></div><div class="stage-caption"><span>Thermalright · 8 ventilateurs RGB</span><span>Glisser pour tourner</span></div></div><div class="case-options"><button class="preview-switch" data-case-option="auto" role="switch" aria-checked="true" title="Le boîtier tourne doucement"><span><strong>Rotation auto</strong></span><i></i></button><button class="preview-switch" data-case-option="explode" role="switch" aria-checked="false" title="Écarter les panneaux"><span><strong>Vue éclatée</strong></span><i></i></button><button class="preview-switch" data-case-option="interior" role="switch" aria-checked="true" title="Carte mère, ventilateurs et GPU"><span><strong>Intérieur visible</strong></span><i></i></button></div><div class="case-sliders"><label class="preview-slider">Zoom<input type="range" id="case-zoom" min=".35" max="1.1" step=".01" value=".64"></label><label class="preview-slider">Animation<input type="range" id="case-speed" min="0" max="10" step="1" value="5"></label></div></section><section class="pnl valorant-panel" id="valorant" aria-labelledby="valorant-section"><div class="val-head"><h2 id="valorant-section"><i aria-hidden="true">04</i>Valorant</h2><span class="val-status" id="val-status" role="status">○ Jeu fermé</span><button class="save-btn" id="val-refresh" title="Recharger rang et matchs depuis HenrikDev">Actualiser</button></div><div class="val-body"><div class="val-rank"><span class="val-diamond" aria-hidden="true"></span><div><b id="val-tier">Rang inconnu</b><div class="val-rrbar"><i id="val-rrfill"></i></div><span class="mono" id="val-rr"></span></div></div><div class="val-live"><span class="eyebrow">En direct</span><b id="val-live-main">Jeu fermé</b><span class="muted" id="val-live-sub"></span></div></div><ol class="val-matches" id="val-matches" aria-label="Derniers matchs"></ol><div class="val-foot"><div class="val-panel-modes" role="group" aria-label="Place de Valorant sur l’écran"><span class="muted">Écran :</span><button class="save-btn" data-val-panel="after_lyrics" aria-pressed="false" title="Paroles d’abord, puis Valorant quand le jeu est ouvert">Après les paroles</button><button class="save-btn" data-val-panel="priority" aria-pressed="false" title="Valorant passe avant les paroles quand le jeu est ouvert">Prioritaire</button><button class="save-btn" data-val-panel="off" aria-pressed="false" title="Jamais sur l’écran physique">Off</button></div><span class="hint" id="val-source"></span></div></section>
 </div><div class="dashboard-column"><section class="pnl lighting" id="lighting"><div class="lighting-head"><h2><i aria-hidden="true">03</i>Éclairage</h2><div class="slider-row"><label for="bright" title="S’applique à toutes les zones. Raccourci : ↑ ↓">Luminosité générale</label><input type="range" id="bright" min="0" max="100" value="80"><span class="slider-val">80</span></div></div>
 <div class="lighting-modes"><h3>Mode d’éclairage</h3><div class="music-modes" role="radiogroup" aria-label="Mode de synchronisation">
 <label class="music-mode"><input type="radio" name="music-mode" data-rhythm-key="rhythm_mode" value="impacts" checked="" onchange="changeRhythm(this)"><span title="Toutes les zones frappent au rythme des kicks."><strong>Ensemble</strong><small>Toutes les zones sur les kicks</small></span></label>
@@ -1393,6 +1500,17 @@ body.vi-on #valo-alerts{top:236px;left:44px;max-width:min(500px,calc(100vw - 32p
 <button class="save-btn" data-ambience="autre" title="Ctrl + Alt + F6">Autre <kbd>F6</kbd></button></div>
 <div class="ambience-footer"><span>Raccourcis : Ctrl + Alt + F1–F6</span><button class="save-btn" id="save-ambience">Mémoriser dans Autre</button></div>
 </div></section></div></div></main>
+<section id="valo-lyrics" class="vl" aria-label="Paroles en cours" hidden>
+<i class="vl-wipe" aria-hidden="true"></i>
+<div class="vd-eye vl-eye"><b>♪</b><span>Paroles</span><span class="vd-src vl-mode" id="vl-mode"></span></div>
+<div class="vl-head"><i class="vl-eq" aria-hidden="true"><b></b><b></b><b></b></i><span class="vl-track" id="vl-track"></span><span class="vl-time" id="vl-time"></span></div>
+<div class="vl-lines">
+<p class="vl-prev" id="vl-prev"></p>
+<div class="vl-cur" id="vl-cur" aria-live="off"><span id="vl-cur-t"></span></div>
+<p class="vl-next" id="vl-next"></p>
+</div>
+<div class="vl-bar" aria-hidden="true"><i id="vl-fill"></i></div>
+</section>
 <div id="valo-wipe" aria-hidden="true"><i></i><i></i><i></i><div class="vw-txt"><span id="vw-kicker">Valorant détecté</span><b id="vw-title">Mode jeu</b></div></div>
 <div id="valo-flash" aria-hidden="true"><i class="vf-bg"></i><i class="vf-white"></i><div class="vf-ghost"><span id="vf-ghost"></span></div><div class="vf-art"><pre class="vd-art" id="vf-art"></pre><img class="vf-img" id="vf-img" alt="" hidden></div><i class="vf-slab"></i><i class="vf-scan"></i><div class="vf-txt"><span>Agent verrouillé</span><b id="vf-name"></b><em>Verrouillé</em></div></div>
 <div class="vd-toast" id="vd-toast" role="status" aria-live="polite"></div>
@@ -1408,7 +1526,7 @@ body.vi-on #valo-alerts{top:236px;left:44px;max-width:min(500px,calc(100vw - 32p
 <button type="button" class="vd-btn" id="vd-stats-btn" style="--d:4" aria-keyshortcuts="S" title="Tes stats sur tout l’historique (touche S)">Stats <kbd>S</kbd></button>
 <button type="button" class="vd-btn" id="vd-recap-btn" style="--d:4" disabled title="Récap du dernier match">Récap</button>
 <button type="button" class="vd-btn" id="vd-refresh" style="--d:4" title="Recharger rang et matchs depuis HenrikDev">Actualiser</button>
-<button type="button" class="vd-btn vd-btn-main" id="vd-exit" style="--d:5" title="Revenir au panneau de contrôle (le thème reste rouge tant que le jeu est ouvert)">Panneau de contrôle</button>
+<button type="button" class="vd-btn vd-btn-main" id="vd-exit" style="--d:5" title="Revenir au dashboard classique (touche V)" aria-keyshortcuts="V">Panneau de contrôle <kbd>V</kbd></button>
 </header>
 <main class="vd-grid">
 <div class="vd-col1">
@@ -1529,6 +1647,7 @@ body.vi-on #valo-alerts{top:236px;left:44px;max-width:min(500px,calc(100vw - 32p
 <div class="vd-bg" aria-hidden="true"><i class="s1"></i><i class="s3"></i><i class="s4"></i></div>
 <header class="vr-top">
 <div class="vr-head"><span class="vd-kicker" id="vr-kicker">Fin de match</span><div class="vr-result"><b id="vr-result">Match</b><span id="vr-score"></span></div></div>
+<div class="vr-note" id="vr-note" hidden title="Note de performance sur 1000 (500 = joueur moyen en classé). Calculée sur les kills, les dégâts, le KAST, la survie, les entrées, les multi-kills et clutchs, les assists, et un peu sur les manches gagnées."><div class="vr-note-main"><span class="vd-kicker">Note de perf</span><div><b id="vr-note-n">—</b><i>/1000</i><strong id="vr-note-g"></strong></div><small id="vr-note-rank"></small></div><div class="vr-parts" id="vr-parts"></div></div>
 <div class="vr-agent"><span class="vd-kicker">Ton agent</span><b id="vr-agent"></b></div>
 <button type="button" class="vd-btn vd-btn-main" id="vr-close">Fermer</button>
 </header>
@@ -2252,6 +2371,7 @@ function renderLiveLyrics(data) {
   document.getElementById('lyrics-live-status').textContent = message;
   document.getElementById('lyrics-source-name').textContent = data.source || 'auto';
   currentLyricsInfo = {artist:data.artist || '',title:data.title || '',source:data.source || 'auto'};
+  if (typeof window.valoLyricsUpdate === 'function') window.valoLyricsUpdate(data);
 }
 async function pollLiveLyrics() {
   if (lyricsRequestPending || Date.now()-lastLyricsEvent < 1500) return;
@@ -3704,6 +3824,21 @@ refreshAmbience();setInterval(refreshAmbience,2500);
     txt('vr-result', { win: 'Victoire', loss: 'Défaite', draw: 'Égalité' }[r.result] || 'Match');
     txt('vr-score', r.rounds_won != null ? r.rounds_won + '–' + r.rounds_lost : '');
     txt('vr-agent', r.agent || '—');
+    const note = $('vr-note');
+    note.hidden = me.perf == null;
+    if (me.perf != null) {
+      note.dataset.tier = me.perf >= 750 ? 'top' : me.perf < 380 ? 'low' : '';
+      txt('vr-note-n', String(me.perf)); txt('vr-note-g', me.grade || '');
+      txt('vr-note-rank', me.perf_rank ? (me.perf_rank === 1 ? '1er' : me.perf_rank + 'e') + ' sur ' + (me.lobby || 10) + ' joueurs' : '');
+      const parts = $('vr-parts'); parts.replaceChildren();
+      [['combat', 'Kills'], ['degats', 'Dégâts'], ['kast', 'KAST'], ['survie', 'Survie'], ['entrees', 'Entrées'], ['impact', 'Impact'], ['assists', 'Assists']].forEach(([k, label], i) => {
+        const v = (me.perf_parts || {})[k]; if (v == null) return;
+        const row = el('div', 'p' + (v < 50 ? ' low' : '')); row.style.setProperty('--i', i);
+        const bar = el('i'); bar.style.setProperty('--f', Math.min(1, v / 100));
+        row.title = label + ' : ' + v + ' (50 = dans la moyenne)';
+        row.append(el('span', '', label), bar, el('span', '', String(v))); parts.append(row);
+      });
+    }
     const kda = $('vr-kda'); kda.replaceChildren(el('b', '', String(me.kills ?? '—')), el('i', '', '/'), el('b', '', String(me.deaths ?? '—')), el('i', '', '/'), el('b', '', String(me.assists ?? '—')), el('small', '', 'K / D / A'));
     const badges = $('vr-badges'); badges.replaceChildren();
     if (me.mvp_match) badges.append(el('span', 'alt', 'MVP du match')); else if (me.mvp_team) badges.append(el('span', 'alt', 'MVP d’équipe'));
@@ -3739,7 +3874,7 @@ refreshAmbience();setInterval(refreshAmbience,2500);
     const board = $('vr-board'); board.replaceChildren();
     [['ally', 'Ton équipe', r.rounds_won], ['enemy', 'Adversaires', r.rounds_lost]].forEach(([team, label, score]) => {
       const t = el('div', 'vr-team ' + team); const h = el('h3'); h.append(el('span', '', label), el('span', '', score != null ? String(score) : '')); t.append(h);
-      const head = el('div', 'vr-row head'); ['Agent', 'K / D / A', 'ACS', 'ADR', 'HS', 'FB'].forEach(c => head.append(el('span', '', c))); t.append(head);
+      const head = el('div', 'vr-row head'); ['Agent', 'K / D / A', 'ACS', 'ADR', 'HS', 'FB', 'Note'].forEach(c => head.append(el('span', '', c))); t.append(head);
       (r.players || []).filter(p => p.team === team).forEach((p, i) => {
         const row = el('div', 'vr-row' + (p.self ? ' me' : p.party ? ' mate' : '')); row.style.setProperty('--i', i + (team === 'enemy' ? 5 : 0));
         const who = el('span');
@@ -3749,6 +3884,10 @@ refreshAmbience();setInterval(refreshAmbience,2500);
         if (p.mvp_match) who.append(el('em', '', 'MVP')); else if (p.mvp_team) who.append(el('em', '', 'MVP éq.'));
         row.append(who, el('span', '', [p.kills, p.deaths, p.assists].map(x => x ?? '—').join(' / ')), el('span', '', p.acs != null ? String(p.acs) : '—'),
           el('span', '', p.adr != null ? String(p.adr) : '—'), el('span', '', p.hs != null ? p.hs + '%' : '—'), el('span', '', String(p.fb ?? 0)));
+        const nt = el('span', '', p.perf != null ? String(p.perf) : '—');
+        if (p.grade) nt.append(el('b', 'g' + (p.perf >= 750 ? ' top' : p.perf < 380 ? ' low' : ''), p.grade));
+        if (p.perf_rank) nt.title = (p.perf_rank === 1 ? '1er' : p.perf_rank + 'e') + ' du lobby';
+        row.append(nt);
         t.append(row);
       });
       board.append(t);
@@ -3922,7 +4061,7 @@ refreshAmbience();setInterval(refreshAmbience,2500);
 
   function renderMatches(v) {
     const ms = v.matches || [];
-    const key = JSON.stringify(ms.map(m => m.match_id));
+    const key = JSON.stringify(ms.map(m => [m.match_id, m.perf]));
     const list = $('vd-cards');
     if (list.dataset.key === key && list.children.length) { list.querySelectorAll('[data-ago]').forEach(e => { e.textContent = ago(e.dataset.ago); }); return; }
     list.dataset.key = key; list.replaceChildren();
@@ -3945,7 +4084,13 @@ refreshAmbience();setInterval(refreshAmbience,2500);
       for (let r = 0; r < (m.rounds_won || 0); r++) rb.append(el('i', 'w'));
       for (let r = 0; r < (m.rounds_lost || 0); r++) rb.append(el('i', 'l'));
       const ag = el('div', 'vd-card-agent'); const ico = agentIcon(m.agent); if (ico) ag.append(ico); ag.append(el('span', '', m.agent || '—'));
-      li.append(res, ag, el('div', 'vd-card-where', [m.map, pretty(m.mode)].filter(Boolean).join(' · ')), rb, kda, bar, foot);
+      const note = el('div', 'vd-card-note' + (m.perf >= 750 ? ' top' : m.perf != null && m.perf < 380 ? ' low' : ''));
+      if (m.perf != null) {
+        note.append(el('b', '', String(m.perf)), el('strong', '', m.grade || ''));
+        if (m.perf_rank) note.append(el('small', '', '#' + m.perf_rank));
+        note.title = 'Note de perf : ' + m.perf + ' / 1000' + (m.perf_rank ? ' · ' + (m.perf_rank === 1 ? '1er' : m.perf_rank + 'e') + ' du lobby' : '');
+      } else note.append(el('small', '', 'Note —'));
+      li.append(res, ag, el('div', 'vd-card-where', [m.map, pretty(m.mode)].filter(Boolean).join(' · ')), note, rb, kda, bar, foot);
       li.title = [m.agent, m.map, pretty(m.mode), m.hs_pct != null ? 'HS ' + m.hs_pct + ' %' : ''].filter(Boolean).join(' · ');
       list.append(li);
     });
@@ -4489,7 +4634,8 @@ refreshAmbience();setInterval(refreshAmbience,2500);
         { mid: true, empty: 'Pas encore de match ici' });
     }
     // Conseils
-    const tips = selTips(L, s);
+    // Calculés par valorant_source.pregame_tips (repli sur l’ancien calcul si le serveur est plus vieux)
+    const tips = Array.isArray(s.tips) ? s.tips.map(t => [t.k, t.t, t.cls]) : selTips(L, s);
     if (changed('tips', tips)) {
       const ol = $('vx-tips'); ol.replaceChildren();
       tips.forEach(([k, html, cls], i) => { const li = el('li', cls); li.style.setProperty('--i', i); const p = el('p'); p.innerHTML = html; li.append(T('span', '', k), p); ol.append(li); });
@@ -4594,21 +4740,26 @@ refreshAmbience();setInterval(refreshAmbience,2500);
     try { localStorage.setItem('valo-ig', JSON.stringify(igHist)); } catch (e) {}
     return igHist;
   }
-  // Chances de victoire : chaque manche se gagne avec ton % de manches gagnées de ce côté sur la map
-  function igChanceFn(t, start, pAtk, pDef, by2) {
-    const half = t - 1, memo = new Map(), pm = (pAtk + pDef) / 2;
-    const pOf = n => { const sd = n <= half ? start : n <= 2 * half ? other(start) : ''; return sd === 'attack' ? pAtk : sd === 'defense' ? pDef : pm; };
-    const otVal = by2 ? ((w, l) => w + l ? w / (w + l) : .5)(pAtk * pDef, (1 - pAtk) * (1 - pDef)) : pm;
+  // Chances de victoire : chaque manche part à 50 %, puis l'équipe menée gagne un peu plus souvent (effet remontada).
+  // Réglé sur l'historique classé (180 matchs) : la map et le côté n'aidaient pas à prévoir, l'écart au score si.
+  const IG_CATCHUP = 0.015;                               // +1,5 point par manche de retard, -1,5 par manche d'avance
+  function igChanceFn(t, by2) {
+    const half = t - 1, memo = new Map();
+    const pAt = (x, y) => Math.min(0.9, Math.max(0.1, 0.5 - IG_CATCHUP * (x - y)));
     function f(x, y) {
       if (x >= half && y >= half) {                       // prolongation
-        if (!by2) return x > y ? 1 : y > x ? 0 : otVal;
         const d = x - y;
-        return d >= 2 ? 1 : d <= -2 ? 0 : d === 0 ? otVal : d === 1 ? pm + (1 - pm) * otVal : pm * otVal;
+        if (!by2) return d > 0 ? 1 : d < 0 ? 0 : pAt(x, y);
+        if (d >= 2) return 1;
+        if (d <= -2) return 0;
+        const p1 = pAt(1, 0), p0 = pAt(0, 0), pm1 = pAt(0, 1);
+        const v0 = p0 * p1 / (1 - p0 * (1 - p1) - (1 - p0) * pm1);
+        return d === 0 ? v0 : d === 1 ? p1 + (1 - p1) * v0 : pm1 * v0;
       }
       if (x >= t) return 1;
       if (y >= t) return 0;
       const k = x + ',' + y;
-      if (!memo.has(k)) { const p = pOf(x + y + 1); memo.set(k, p * f(x + 1, y) + (1 - p) * f(x, y + 1)); }
+      if (!memo.has(k)) { const p = pAt(x, y); memo.set(k, p * f(x + 1, y) + (1 - p) * f(x, y + 1)); }
       return memo.get(k);
     }
     return f;
@@ -4686,8 +4837,7 @@ refreshAmbience();setInterval(refreshAmbience,2500);
     txt('vi-round', String(n)); txt('vi-phase', ot ? 'Prolongation' : n <= half ? '1re mi-temps' : '2e mi-temps');
     // Chances
     const sd = s.sides || {}, enough = (sd.atk_rounds || 0) + (sd.def_rounds || 0) >= 40;
-    const pAtk = enough && sd.atk != null ? 0.25 + sd.atk / 200 : 0.5, pDef = enough && sd.def != null ? 0.25 + sd.def / 200 : 0.5;
-    const f = igChanceFn(t, start || 'attack', pAtk, pDef, by2);
+    const f = igChanceFn(t, by2);
     const ch = Math.round(100 * f(a, b)), chW = Math.round(100 * f(a + 1, b)), chL = Math.round(100 * f(a, b + 1));
     // Série de manches, avance et retard max
     let streak = 0, kind = h.seq[h.seq.length - 1] || '';
@@ -4726,15 +4876,14 @@ refreshAmbience();setInterval(refreshAmbience,2500);
     // Fil du match
     if (igChanged('flow', [a, b, h.seq, h.a0, h.b0, igEl.clientWidth, igEl.clientHeight])) igFlow(h, a, b, half, by2);
     // Chances : détail
-    if (igChanged('chance', [ch, chW, chL, enough, pAtk, pDef])) {
+    if (igChanged('chance', [ch, chW, chL])) {
       const c = $('vi-chance'); c.replaceChildren();
       const big = el('div', 'vi-ch-big' + (ch < 50 ? ' lo' : '')); const ring = el('i', 'vs-ring'); ring.style.setProperty('--p', ch);
       const bt = el('div'); bt.append(el('b', '', ch + '%'), T('span', '', ch >= 70 ? 'Très bien parti' : ch >= 55 ? 'Avantage pour vous' : ch > 45 ? 'Match ouvert' : ch > 30 ? 'Avantage pour eux' : 'Mal embarqué, mais rien n’est fini'));
       big.append(ring, bt);
       const ifs = el('div', 'vi-ch-if');
       [['Si vous gagnez la prochaine', chW], ['Si vous la perdez', chL]].forEach(([k, x], i) => { const d = el('div', x < 50 ? 'lo' : ''); d.style.setProperty('--i', i); d.append(T('span', '', k), el('b', '', x + '%')); ifs.append(d); });
-      const note = T('p', 'vi-ch-note', enough ? `Calcul : chaque manche se gagne avec ton % de manches gagnées de ce côté sur ${s.map} (${sd.atk} % en attaque, ${sd.def} % en défense), ramené vers 50 %.`
-        : 'Calcul : 50 % par manche (pas encore assez de manches sur cette map pour faire mieux).');
+      const note = T('p', 'vi-ch-note', 'Calcul : chaque manche part à 50 %, et l’équipe menée gagne un peu plus souvent (+1,5 point par manche de retard). Réglé sur tes matchs classés : les remontadas y sont fréquentes, la map et le côté n’aidaient pas à prévoir.');
       c.append(big, ifs, note);
     }
     // Équipes
@@ -4797,6 +4946,80 @@ refreshAmbience();setInterval(refreshAmbience,2500);
   });
   if (window.ResizeObserver) new ResizeObserver(() => { if (igOpen && last) { heroFit('vi'); delete igKeys.flow; fillIngame(last); } }).observe(igEl);
 
+  // ── Widget paroles : en bas à gauche, par-dessus tous les écrans Valorant (même en partie) ──
+  const vlEl = $('valo-lyrics');
+  let vlKey = '';
+  // Où ranger le panneau : sous l'agent si un écran plein (Stats, sélection, partie) est ouvert, sinon sous le rang
+  function vlPlace() {
+    const hero = statsOpen && !statsEl.hidden ? statsEl : selOpen && !selEl.hidden ? selEl : igOpen && !igEl.hidden ? igEl : null;
+    const host = hero ? hero.querySelector('.vs-hero-foot') : document.querySelector('#valo-dash .vd-col1');
+    if (!host) return;
+    const inHero = !!hero;
+    if (vlEl.parentElement !== host) {
+      host.append(vlEl);
+      if (inHero) { const p = hero.id === 'valo-stats' ? 'stats' : hero.id === 'valo-select' ? 'vx' : 'vi'; requestAnimationFrame(() => p === 'stats' ? fitHero() : heroFit(p)); }
+    }
+    vlEl.classList.toggle('in-hero', inHero); vlEl.classList.toggle('in-dash', !inHero);
+    vlEl.classList.toggle('vd-pnl', !inHero);
+  }
+  // Touche L : automatique (seulement avec des paroles synchronisées) → toujours affiché → masqué
+  let vlMode = 'auto', vlData = null;
+  try { vlMode = localStorage.getItem('valo-lyrics-mode') || 'auto'; } catch (e) {}
+  if (!['auto', 'force', 'off'].includes(vlMode)) vlMode = 'auto';
+  // Entrée et sortie en motion design : un aplat rouge balaie le panneau, puis tout se pose ligne par ligne
+  let vlOutT = 0;
+  function vlHide() {
+    if (vlEl.hidden || vlEl.classList.contains('leave')) return;
+    if (reduce.matches) { vlEl.hidden = true; return; }
+    vlEl.classList.remove('enter'); vlEl.classList.add('leave');
+    clearTimeout(vlOutT);
+    vlOutT = setTimeout(() => { vlEl.hidden = true; vlEl.classList.remove('leave'); }, 860);
+  }
+  function vlRender() {
+    const data = vlData;
+    const hasTrack = !!data && data.active !== false && !!(data.artist || data.title);
+    const synced = hasTrack && !data.loading && (data.total_lines || 0) > 0 && !!data.synced;
+    if (vlMode === 'off' || (!synced && vlMode !== 'force')) { vlKey = ''; vlHide(); return; }
+    vlPlace();
+    const appearing = vlEl.hidden || vlEl.classList.contains('leave');
+    clearTimeout(vlOutT); vlEl.classList.remove('leave'); vlEl.hidden = false;
+    if (appearing && !reduce.matches) {
+      vlKey = '';                                  // la ligne en cours rejoue son entrée avec le panneau
+      vlEl.classList.remove('enter'); void vlEl.offsetWidth; vlEl.classList.add('enter');
+      clearTimeout(vlEl._t); vlEl._t = setTimeout(() => vlEl.classList.remove('enter'), 2000);
+    }
+    txt('vl-mode', vlMode === 'force' ? 'toujours affiché · L' : 'automatique · L');
+    txt('vl-track', hasTrack ? [data.artist, data.title].filter(Boolean).join(' · ') : 'Paroles');
+    const status = !hasTrack ? 'En attente d’un morceau' : data.loading ? 'Recherche des paroles…' : !(data.total_lines > 0) ? 'Pas de paroles pour ce morceau' : !data.synced ? 'Paroles sans synchronisation' : '';
+    const cur = synced ? (data.current_line || '') : '', key = status || ((data.current_idx ?? -1) + '|' + cur);
+    if (key !== vlKey) {
+      vlKey = key;
+      const c = $('vl-cur'), shown = status || cur || '♪ ♪';
+      txt('vl-cur-t', shown);
+      c.classList.toggle('idle', !status && !cur); c.classList.toggle('st', !!status);
+      c.classList.toggle('short', !status && !!cur && cur.length <= 22); c.classList.toggle('long', !status && cur.length > 56);
+      const ln = c.parentElement;
+      [c, ln].forEach(x => { x.classList.remove('in'); void x.offsetWidth; x.classList.add('in'); });
+      txt('vl-prev', synced ? (data.previous_line || ((data.before || []).slice(-1)[0]) || '') : '');
+      txt('vl-next', synced ? (data.next_line || ((data.after || [])[0]) || '') : '');
+    }
+    const pos = hasTrack ? (data.raw_position ?? data.position) : null, dur = hasTrack ? data.duration : 0;
+    $('vl-fill').style.setProperty('--p', typeof pos === 'number' && dur ? Math.max(0, Math.min(100, pos / dur * 100)).toFixed(1) : 0);
+    const mm = x => Math.floor(x / 60) + ':' + String(Math.floor(x % 60)).padStart(2, '0');
+    txt('vl-time', typeof pos === 'number' && dur ? mm(Math.max(0, pos)) + ' / ' + mm(dur) : '');
+  }
+  window.valoLyricsUpdate = data => { vlData = data; vlRender(); };
+  window.addEventListener('keydown', e => {
+    if (e.key.toLowerCase() !== 'l' || e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
+    if (e.target.closest('input, select, textarea, [contenteditable]')) return;
+    if (!body.classList.contains('valo-show')) return;
+    e.preventDefault();
+    vlMode = { auto: 'force', force: 'off', off: 'auto' }[vlMode];
+    try { localStorage.setItem('valo-lyrics-mode', vlMode); } catch (err) {}
+    toast({ auto: 'Paroles : automatique', force: 'Paroles : toujours affichées', off: 'Paroles : masquées' }[vlMode], vlMode !== 'off');
+    vlRender();
+  });
+
   $('vd-comp').addEventListener('click', () => setComp(!compOnly));
   window.addEventListener('keydown', e => {
     if (e.key.toLowerCase() !== 'c' || e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
@@ -4821,13 +5044,22 @@ refreshAmbience();setInterval(refreshAmbience,2500);
   let quipLast = 0;
   const pick = a => a[Math.floor(Math.random() * a.length)];
   const fill = (t, vars) => t.replace(/\{(\w+)\}/g, (_, k) => vars && vars[k] != null ? vars[k] : '');
-  function quip(key, list, vars, kind, cooldownMs) {
+  const QUIP_LABELS = { good: ['Bien joué', 'Propre', 'Respect'], bad: ['Aïe', 'Ouch', 'Oups'], pc: ['Le PC'], epic: ['Énorme'], '': ['Commentaire'] };
+  function quip(key, list, vars, kind, cooldownMs, label, minor) {
     if (!quipsOn || !list || !list.length) return;
     const now = Date.now();
     if (quipSeen[key] && now - quipSeen[key] < (cooldownMs || 600000)) return;
+    kind = kind || '';
+    const prio = minor ? 1 : kind === 'epic' ? 3 : kind === 'good' || kind === 'bad' || kind === 'pc' ? 2 : 1;
+    if (quipQueue.length >= 5) {
+      // File pleine : le nouveau remplace le moins important (et le plus récent à importance égale), sinon il passe son tour
+      let low = -1;
+      quipQueue.forEach((q, i) => { if (q.prio < prio && (low < 0 || q.prio <= quipQueue[low].prio)) low = i; });
+      if (low < 0) return;
+      quipQueue.splice(low, 1);
+    }
     quipSeen[key] = now;
-    quipQueue.push({ text: fill(pick(list), vars), kind: kind || '', label: { good: 'Bien joué', bad: 'Aïe', pc: 'Le PC' }[kind] || 'Commentaire' });
-    if (quipQueue.length > 4) quipQueue.shift();
+    quipQueue.push({ text: fill(pick(list), vars), kind, prio, label: label || pick(QUIP_LABELS[kind] || QUIP_LABELS['']) });
   }
   function showQuip(q) {
     const life = 6000 + Math.min(4000, q.text.length * 30);
@@ -4856,48 +5088,295 @@ refreshAmbience();setInterval(refreshAmbience,2500);
   });
 
   const Q = {
-    pistolWin: ['Pistolet gagné. Le ton est donné.', 'Première manche dans la poche, on garde ce rythme.', 'Manche pistolet gagnée. Le Classic a parlé.'],
-    pistolLoss: ['Pistolet perdu. C’est la manche la moins chère de la partie, au moins.', 'Pistolet raté. On respire, on achète malin.'],
-    streakWin: ['{n} manches d’affilée. Ils ne comprennent pas ce qui se passe.', 'Série de {n}. Continue de faire exactement ça.', '{n} manches de suite, l’autre équipe commence à douter.'],
-    streakLoss: ['{n} manches perdues d’affilée. Un temps mort mental, et on repart.', 'Série noire de {n}. Change un truc : timing, site, placement.', '{n} de suite pour eux. On respire, on communique.'],
-    half: ['Mi-temps : {a}-{e}. Changement de côté.', 'Fin de la première mi-temps sur {a}-{e}. On change de côté et on recommence.'],
-    halfGood: ['Mi-temps à {a}-{e}. Belle avance, on ne relâche rien.'],
-    halfBad: ['Mi-temps à {a}-{e}. Rien n’est joué, une mi-temps ça se retourne.'],
-    matchPointUs: ['Balle de match. Une manche, rien qu’une.', 'Balle de match pour vous. Pas de cadeau maintenant.'],
-    matchPointThem: ['Balle de match pour eux. Il faut tout donner sur celle-là.', 'Ils sont à une manche. Manche décisive, concentration maximale.'],
-    overtime: ['12-12. Prolongation, les nerfs vont parler.', 'Prolongation. C’est là que les légendes se font. Ou pas.'],
-    comeback: ['Remontada en cours : de {d} manches de retard à égalité.', 'Ils menaient de {d}. Plus maintenant.'],
-    agentMain: ['{agent} encore ? {games} parties, on connaît la chanson.', '{agent}, ton agent de cœur : {games} parties et {wr} % de victoires.', 'Sans surprise, {agent}. {games} parties au compteur.'],
-    agentBest: ['{agent} : ton meilleur % de victoires ({wr} %). Bon choix.'],
-    agentRare: ['{agent} ? Première fois qu’on te voit avec, ou presque. Audacieux.', '{agent}, ça change. On note.'],
-    mapGood: ['{map} : {wr} % de victoires sur {games} parties. Ton terrain de jeu.'],
-    mapBad: ['{map}... {wr} % de victoires sur {games} parties. Aujourd’hui on inverse la tendance.', '{map}, ta map maudite : {wr} %. Courage.'],
-    comboGood: ['{agent} sur {map} : {wr} % de victoires. La combinaison qui marche.'],
-    comboBad: ['{agent} sur {map} : {wr} % de victoires sur {games} parties. Pari risqué.'],
-    ace: ['ACE. Cinq sur cinq, rien à ajouter.', 'Un ace dans la dernière partie. Encadre la manche {n}.'],
-    clutchBig: ['Clutch 1v{vs} à la manche {n}. Sang-froid total.', '1v{vs} gagné en manche {n}. Ils en parlent encore.'],
-    mvp: ['MVP du match. Le dashboard est fier de toi.', 'Meilleur score de la partie. Rien à redire.'],
-    rough: ['K/D de {kd} sur la dernière. On oublie et on relance.', 'Partie compliquée ({k}/{d}/{a}). La suivante sera meilleure.'],
-    stomped: ['{w}-{l}. On n’en parle plus jamais.', 'Défaite {w}-{l}. Ça arrive aux meilleurs, file boire de l’eau.'],
-    otWin: ['Victoire en prolongation. Le cœur a tenu.'],
-    lossStreak: ['3 défaites d’affilée. Une pause de 10 minutes fait gagner plus de RR qu’une 4e partie tendue.', 'Trois défaites de suite. Pause eau, étirements, puis on revient.'],
-    winStreak: ['{n} victoires d’affilée. Ne touche à rien, ça marche.', 'Série de {n} victoires. Le rang suivant te regarde.'],
-    gpuHot: ['GPU à {t} °C. Il transpire plus que toi.', 'Le GPU monte à {t} °C. Un petit coup d’œil aux ventilos ?'],
-    cpuMax: ['CPU à {p} %. Il donne tout, comme toi.'],
-    ramFull: ['RAM remplie à {p} %. Chrome, on te voit.'],
+    pistolWin: [
+      'Pistolet gagné. Le Classic a choisi son camp.',
+      'Première manche pliée. En face, ils vont acheter des Sheriff et prier.',
+      'Pistolet dans la poche. Maintenant on les met en éco forcée.',
+      'Manche pistolet gagnée. Petit échauffement, rien de plus.',
+      'Pistolet gagné. Ghost, Classic, Frenzy, peu importe : ça rentre.',
+      'Première manche pour vous. En face, quelqu’un tape déjà « gg ez » par réflexe inversé.',
+      'Pistolet gagné. Les Spectre arrivent, ils ne le savent pas encore.',
+    ],
+    pistolLoss: [
+      'Pistolet perdu. Manche la moins chère de la partie, on dira ça.',
+      'Pistolet raté. Si tu force-buy une Judge, je ne dirai rien.',
+      'Pistolet perdu. Personne n’a vu, on continue.',
+      'Pistolet pour eux. Bonus de défaite activé, la consolation de luxe.',
+      'Pistolet perdu. Le Classic t’a trahi, il le paiera.',
+      'Manche pistolet ratée. On sauve, on s’organise, et on leur vole leurs armes.',
+      'Pistolet perdu. Rappel : il en faut 13 pour gagner. Il en reste 13.',
+    ],
+    streakWin: [
+      '{n} manches d’affilée. En face, ils commencent à s’engueuler en vocal.',
+      'Série de {n}. L’autre équipe tape déjà /ff.',
+      '{n} de suite. À ce stade, c’est du harcèlement.',
+      '{n} manches pliées. Leur IGL vient de perdre tous ses moyens.',
+      '{n} manches d’affilée. Continue, je prends des notes.',
+      'Série de {n}. Leur Jett regarde le plafond.',
+      '{n} d’affilée. Ils achètent, ils meurent, ils recommencent.',
+      '{n} manches de suite. On appelle ça un rouleau compresseur.',
+    ],
+    streakLoss: [
+      '{n} manches perdues de suite. Quelqu’un a vu la spike ?',
+      'Série noire de {n}. Change un truc : timing, site, ou de coéquipiers (non).',
+      '{n} de suite pour eux. Respire. Coupe le vocal s’il le faut.',
+      '{n} manches dans le vent. Même la spike a honte.',
+      '{n} d’affilée pour eux. On arrête de rush B les yeux fermés ?',
+      '{n} manches perdues. Ils ont trouvé une faille. Bouche-la.',
+      'Série de {n} pour eux. Un retake propre, et tout change.',
+      '{n} de suite. Ralentis, joue l’info, laisse-les venir.',
+    ],
+    half: [
+      'Mi-temps : {a}-{e}. On change de côté et on fait semblant d’avoir un plan.',
+      '{a}-{e} à la pause. Gorgée d’eau, et on y retourne.',
+      'Fin de mi-temps sur {a}-{e}. Tout reste possible, dans les deux sens.',
+      'Mi-temps à {a}-{e}. Partie serrée, nerfs solides.',
+      '{a}-{e}, changement de côté. Les douze prochaines manches décident de tout.',
+    ],
+    halfGood: [
+      'Mi-temps à {a}-{e}. En face, ils pensent déjà à la prochaine partie.',
+      '{a}-{e} à la pause. On ne relâche rien, les remontadas existent aussi chez eux.',
+      '{a}-{e}. Belle première mi-temps. Maintenant on finit le travail.',
+      'Mi-temps à {a}-{e}. Le plus dur reste de ne pas s’endormir.',
+    ],
+    halfBad: [
+      'Mi-temps à {a}-{e}. Les crédits repartent à zéro. Nous aussi.',
+      '{a}-{e} à la pause. Une mi-temps, ça se retourne. Même celle-là.',
+      '{a}-{e}. Mauvaise mi-temps. La deuxième est un nouveau match.',
+      'Mi-temps à {a}-{e}. Les remontadas, ça commence toujours comme ça.',
+    ],
+    matchPointUs: [
+      'Balle de match. Une manche. Ne fais rien de stupide.',
+      'Balle de match. Pas de rush héroïque au couteau, merci.',
+      'Plus qu’une. Prépare le /gg.',
+      'Balle de match. Joue simple, joue ensemble, et c’est plié.',
+      'Une manche du bonheur. Les mains, on les garde sèches.',
+    ],
+    matchPointThem: [
+      'Balle de match pour eux. Aucune pression. Enfin si, toute la pression.',
+      'Ils sont à une manche. C’est le moment du clutch de ta vie.',
+      'Balle de match en face. Si on la sauve, on raconte cette histoire pendant des années.',
+      'Ils sont à 12. Une manche à la fois, et on verra.',
+      'Balle de match pour eux. Personne ne lâche, personne ne tilte.',
+    ],
+    overtime: [
+      '12-12. Prolongation. Mains moites activées.',
+      'Prolongation. Les légendes se font ici. Les clips de fail aussi.',
+      '12 partout. Ton cœur à 140 BPM, sans musique.',
+      'Prolongation. Ceux qui ont des nerfs vont gagner.',
+      '12-12. Ferme les autres onglets, ceci est sérieux.',
+    ],
+    comeback: [
+      'Remontada : {d} manches de retard effacées. Ils ne comprennent plus rien.',
+      'Ils menaient de {d}. Ils menaient.',
+      'De -{d} à égalité. Quelqu’un prévient le commentateur ?',
+      '{d} manches de retard, et vous revoilà. En face, ça panique.',
+      'Remontada de {d} manches. Le moral a changé de camp.',
+    ],
+    agentMain: [
+      '{agent}, encore. {games} parties. Personne n’est surpris.',
+      '{agent} verrouillé. {games} parties, {wr} % de victoires. Le grand classique.',
+      '{agent} ? Quelle surprise. Vraiment. ({games} parties)',
+      'Instalock {agent}, comme d’hab. {wr} % de victoires, ça se défend.',
+      '{agent}, partie numéro {games}. À ce stade, c’est une relation sérieuse.',
+      '{agent} sélectionné avant même la fin du chargement. {wr} % de victoires.',
+      'Tiens, {agent}. On ne l’avait pas vu depuis... la dernière partie.',
+    ],
+    agentBest: [
+      '{agent} : ton meilleur taux de victoire ({wr} %). Le choix des gens qui gagnent.',
+      '{agent} sorti du placard. {wr} % de victoires, on est en confiance.',
+      '{agent}, {wr} % de victoires. L’arme secrète est de sortie.',
+      'Ton meilleur agent : {agent}. {wr} % de victoires. On joue pour gagner, ce soir.',
+    ],
+    agentRare: [
+      '{agent} ? Première fois, ou presque. Tes coéquipiers prient.',
+      '{agent}, ça change. On ouvre les paris.',
+      'Toi sur {agent}. Expérience scientifique en cours.',
+      '{agent} ? Courageux. On en reparle au récap.',
+      '{agent}. Tu as regardé un tuto ce matin, avoue.',
+      'Nouvel agent : {agent}. Le ranked comme terrain d’entraînement, audacieux.',
+    ],
+    mapGood: [
+      '{map} : {wr} % de victoires sur {games} parties. Chez toi, quoi.',
+      '{map}. Ton jardin. {wr} % de victoires.',
+      '{map}, {wr} % de victoires. Tu connais chaque recoin, chaque angle, chaque one-way.',
+      '{map} : {wr} %. Ils ne savent pas encore chez qui ils viennent.',
+    ],
+    mapBad: [
+      '{map}... {wr} % de victoires sur {games} parties. On fait comme si de rien n’était.',
+      '{map}, ta map maudite ({wr} %). Aujourd’hui on brise la malédiction.',
+      'Encore {map}. {wr} % de victoires. Le jeu te teste.',
+      '{map} : {wr} % sur {games} parties. Statistiquement, ça ne peut que s’améliorer.',
+      '{map}. Respire. {wr} %, ce n’est qu’un chiffre.',
+    ],
+    comboGood: [
+      '{agent} sur {map} : {wr} % de victoires. La recette du chef.',
+      '{agent} sur {map}, {wr} %. Combo validée, on ne touche à rien.',
+      '{agent} sur {map} : {wr} %. Ça sent la victoire.',
+      '{agent} plus {map}, {wr} % de victoires. Le duo qui fait mal.',
+    ],
+    comboBad: [
+      '{agent} sur {map} : {wr} % sur {games} parties. Pari osé. Très osé.',
+      '{agent} sur {map}, {wr} %. On appelle ça un défi personnel.',
+      '{agent} sur {map} : {wr} %. Tu aimes souffrir, visiblement.',
+      '{agent} sur {map}, {wr} % de victoires. Cette fois, c’est la bonne. Peut-être.',
+    ],
+    ace: [
+      'ACE. Cinq sur cinq. Tout le serveur t’a vu.',
+      'Un ace à la manche {n}. Encadre-le, imprime-le, mets-le au mur.',
+      'ACE en manche {n}. Cinq joueurs viennent de remettre leur vie en question.',
+      'ACE. Tes coéquipiers n’ont servi à rien, et c’est très bien comme ça.',
+      'Manche {n} : ACE. Le clip, tu l’as gardé, j’espère ?',
+    ],
+    quad: [
+      '4K à la manche {n}. Le cinquième s’est bien caché.',
+      'Quatre kills en manche {n}. L’ace était juste là. Frustrant.',
+      '4K en manche {n}. Un de plus et c’était l’ace. On y était presque.',
+      'Manche {n} : quatre kills. Le dernier a eu de la chance.',
+    ],
+    clutchBig: [
+      'Clutch 1v{vs} à la manche {n}. Sang-froid de congélateur.',
+      '1v{vs} gagné en manche {n}. Ils en parlent encore dans le lobby.',
+      'Manche {n} : 1v{vs}. Tes coéquipiers morts regardaient, bouche bée.',
+      '1v{vs} en manche {n}. Seul contre tous, et c’est toi qui gagnes.',
+      'Clutch 1v{vs}. Ton cardio a fait des heures sup’ à la manche {n}.',
+    ],
+    mvp: [
+      'MVP du match. Le dashboard pleure de fierté.',
+      'Meilleur score du serveur. Les neuf autres peuvent rentrer.',
+      'MVP. On aimerait dire qu’on est surpris.',
+      'MVP du match. Tu as porté dix joueurs, adversaires compris.',
+      'Premier du serveur. Tes adversaires vont regarder ton profil.',
+    ],
+    teamMvp: [
+      'Meilleur de ton équipe. Tu les as portés sur ton dos.',
+      'MVP d’équipe. Ton dos va réclamer des vacances.',
+      'Premier de ton équipe. Les autres te doivent un verre d’eau.',
+      'MVP d’équipe. Sans toi, cette partie était perdue d’avance.',
+    ],
+    bottomFrag: [
+      'Dernier de l’équipe au score. On dira que tu jouais soutien moral.',
+      'Bottom frag. Les stats mentent, c’est bien connu.',
+      'Dernier du tableau. Prochaine partie, on monte d’un étage.',
+      'Dernier au score. Tu as gardé tes kills pour la prochaine.',
+      'Bottom frag. Quelqu’un devait le faire, tu t’es sacrifié.',
+    ],
+    rough: [
+      'K/D de {kd}. On n’en parle pas, on relance.',
+      'Partie compliquée ({k}/{d}/{a}). Le jeu te doit une revanche.',
+      '{k}/{d}/{a}. Ta souris avait peut-être besoin de piles.',
+      '{k}/{d}/{a}. Ton viseur était en grève, solidarité.',
+      'K/D de {kd}. On a tous des jours sans. Aujourd’hui c’était le tien.',
+    ],
+    stomped: [
+      '{w}-{l}. Cette partie n’a jamais existé.',
+      'Défaite {w}-{l}. Ça arrive aux meilleurs. Souvent, apparemment.',
+      '{w}-{l}. On efface l’historique et on va boire de l’eau.',
+      '{w}-{l}. Ils étaient clairement plus nombreux. Ou plus forts. Ou les deux.',
+      'Raclée {w}-{l}. Bonne nouvelle : c’est fini.',
+    ],
+    otWin: [
+      'Victoire en prolongation. Le cœur a tenu, de justesse.',
+      'Gagné en prolongation. Ça valait chaque battement.',
+      'Prolongation gagnée. Les nerfs d’acier, c’est toi.',
+      'Victoire après prolongation. Tu peux enfin respirer.',
+    ],
+    thrifty: [
+      '{what} en éco. Les Sheriff ont fait le travail.',
+      '{what} en éco. Ils avaient des Vandal, vous aviez du culot.',
+      '{what} en éco. Leurs armes à 2900 crédits ont pleuré.',
+      '{what} en éco. Le budget le plus rentable de la partie.',
+    ],
+    flawless: [
+      '{n} manches sans perdre personne. Propre, chirurgical.',
+      '{n} flawless. Le mot « danger » ne vous concerne pas.',
+      '{n} manches parfaites. Cinq vivants, zéro excuse en face.',
+      '{n} flawless. Les soigneurs de l’équipe se sont ennuyés.',
+    ],
+    firstBlood: [
+      '{n} first bloods. L’entry, c’est toi.',
+      '{n} premiers kills de manche. Tu ouvres la porte, les autres suivent.',
+      '{n} first bloods. Toujours le premier à entrer dans la danse.',
+      '{n} ouvertures. En face, ils ont appris à craindre ce coin.',
+    ],
+    lossStreak: [
+      '3 défaites d’affilée. Une pause de 10 minutes rapporte plus de RR qu’une 4e partie tendue.',
+      'Trois défaites. Le ranked te teste. Pause, eau, étirements.',
+      '3 de suite. Ton rang ne bougera pas pendant la pause, promis.',
+      'Série de défaites. Le bouton « jouer » peut attendre cinq minutes.',
+      'Trois d’affilée. Un deathmatch pour se vider la tête, et on revient.',
+    ],
+    winStreak: [
+      '{n} victoires d’affilée. Ne change rien. Même pas de chaise.',
+      'Série de {n}. Le rang suivant commence à paniquer.',
+      '{n} d’affilée. Tu es en feu. Le GPU aussi.',
+      '{n} victoires de suite. Le matchmaking va finir par se venger.',
+      'Série de {n} victoires. Personne ne te parle, personne ne te dérange.',
+    ],
+    rankUp: [
+      'RANK UP. {tier}. Bienvenue à l’étage.',
+      '{tier} débloqué. Capture d’écran obligatoire.',
+      'Montée en {tier}. On l’avait toujours dit (non).',
+      '{tier}. Ton ancien rang ne te mérite plus.',
+      'Promotion : {tier}. Change ta photo de profil, c’est le moment.',
+    ],
+    rankDown: [
+      'Retour en {tier}. Repli stratégique.',
+      'Derank en {tier}. On reprend l’ascenseur dès la prochaine.',
+      '{tier}. Petit pas en arrière, pour mieux sauter.',
+      'Retour en {tier}. Le rang du dessus t’attend, il ne part pas.',
+    ],
+    rrUp: [
+      '+{rr} RR. Grosse partie, gros chèque.',
+      '+{rr} RR. Le système t’aime aujourd’hui.',
+      '+{rr} RR. Ça, c’est une paye.',
+      '+{rr} RR d’un coup. Le rang suivant se rapproche vite.',
+    ],
+    rrDown: [
+      '{rr} RR. Le système a été cruel.',
+      '{rr} RR. Aïe. On récupère ça vite fait.',
+      '{rr} RR. Ça pique. La prochaine rembourse.',
+      '{rr} RR. On oublie, on boit de l’eau, on relance.',
+    ],
+    gpuHot: [
+      'GPU à {t} °C. On pourrait y cuire des œufs.',
+      'GPU à {t} °C. Il transpire plus que toi en clutch.',
+      '{t} °C côté GPU. Les ventilos réclament un syndicat.',
+      'GPU à {t} °C. Le chauffage de la pièce, c’est lui.',
+      '{t} °C. Ton GPU joue aussi la partie, et il est en sueur.',
+    ],
+    cpuMax: [
+      'CPU à {p} %. Il donne tout, comme toi en éco.',
+      'CPU à {p} %. Il lance des appels à l’aide.',
+      'CPU à {p} %. Quelque chose tourne en fond, et ce quelque chose a faim.',
+      'CPU au taquet ({p} %). Il mériterait une prime.',
+    ],
+    ramFull: [
+      'RAM remplie à {p} %. Chrome, on te voit.',
+      'RAM à {p} %. Ferme un onglet, sauve une vie.',
+      'RAM à {p} %. Ton PC fait de la place comme il peut.',
+      '{p} % de RAM. Il reste un petit tiroir de libre.',
+    ],
+    lateNight: [
+      'Il est {h}. Le ranked à cette heure-là, c’est un sport extrême.',
+      '{h}. Les smurfs sortent la nuit, fais attention à toi.',
+      'Il est {h}. « Une dernière », qu’il disait.',
+      '{h}. Le soleil va bientôt te demander des comptes.',
+    ],
+    // Fun facts : un groupe de variantes par stat (même ordre que les conditions plus bas)
     fact: [
-      'Fun fact : tu gagnes {pistol} % de tes manches pistolet.',
-      'Fun fact : ton KAST moyen est de {kast} %.',
-      'Fun fact : en attaque {atk} %, en défense {def} %.',
-      'Fun fact : tu as posé {plants} spikes dans tes matchs détaillés.',
-      'Fun fact : ta meilleure combo, c’est {combo} ({cwr} %).',
-      'Fun fact : en solo {solo} %, en groupe {group} %.',
-      'Fun fact : {aces} ace(s) et {clutches} clutchs au compteur.',
+      ['Tu gagnes {pistol} % de tes manches pistolet. Le Classic te dit merci.', '{pistol} % de manches pistolet gagnées. Le premier round, c’est ton truc. Ou pas.', 'Manches pistolet : {pistol} % de réussite. Tout se joue dès la première seconde.'],
+      ['Ton KAST moyen : {kast} %. Tu sers à quelque chose {kast} % du temps.', 'KAST de {kast} %. Tu es utile dans {kast} % des manches. Le reste, mystère.', '{kast} % de KAST. Kill, assist, survie ou échange : tu coches souvent une case.'],
+      ['En attaque {atk} %, en défense {def} %. Ton côté préféré se voit.', 'Attaque : {atk} %. Défense : {def} %. Tu sais où tu es chez toi.', '{atk} % en attaque, {def} % en défense. Le changement de côté te réussit, ou pas.'],
+      ['{plants} spikes posés dans tes matchs détaillés. Le poseur officiel, c’est toi.', '{plants} spikes posés. Tu as un abonnement au site B ?', '{plants} plants au compteur. Les défenseurs te maudissent.'],
+      ['Ta meilleure combo : {combo} ({cwr} %). Pourquoi tu joues autre chose ?', 'Meilleure combo : {combo}, {cwr} % de victoires. Note-la quelque part.', '{combo} : {cwr} % de victoires. La recette secrète, sous tes yeux.'],
+      ['En solo {solo} %, en groupe {group} %. Tes potes : atout ou boulet ?', 'Solo : {solo} %. Groupe : {group} %. Les chiffres ont un avis sur tes potes.', '{solo} % en solo, {group} % en groupe. Choisis bien avec qui tu lances.'],
+      ['{aces} ace(s) et {clutches} clutchs au compteur. Le CV est solide.', '{clutches} clutchs et {aces} ace(s). Tu brilles quand tout le monde est mort.', 'Au compteur : {aces} ace(s), {clutches} clutchs. Les highlights, c’est toi.'],
     ],
   };
 
   let lv = { key: '', a: 0, e: 0, seq: [], maxDeficit: 0, half: false, mpUs: false, mpThem: false, ot: false, cb: false };
-  let lastPick = '', lastSeenMatch = null, lastQuipFact = Date.now();
+  let lastPick = '', lastSeenMatch = null, lastQuipFact = Date.now(), lastTier = null, lastElo = null;
   function watch(v) {
     const live = v.live || {}, st = live.running ? live.state : null;
     const stats = v.stats ? (compOnly ? v.stats.competitive : v.stats.all) : null;
@@ -4912,14 +5391,14 @@ refreshAmbience();setInterval(refreshAmbience,2500);
         lv.seq.push(wonRound); lv.a = a; lv.e = e;
         lv.maxDeficit = Math.max(lv.maxDeficit, e - a);
         const total = a + e;
-        if (total === 1 || (regular && total === 13)) quip('pistol' + key + total, wonRound ? Q.pistolWin : Q.pistolLoss, {}, wonRound ? 'good' : 'bad');
+        if (total === 1 || (regular && total === 13)) quip('pistol' + key + total, wonRound ? Q.pistolWin : Q.pistolLoss, {}, wonRound ? 'good' : 'bad', 0, 'Pistolet');
         let n = 0; for (let i = lv.seq.length - 1; i >= 0 && lv.seq[i] === wonRound; i--) n++;
-        if (n === 3 || n === 5) quip('streak' + key + total, wonRound ? Q.streakWin : Q.streakLoss, { n }, wonRound ? 'good' : 'bad');
-        if (regular && total === 12 && !lv.half) { lv.half = true; quip('half' + key, a - e >= 3 ? Q.halfGood : e - a >= 3 ? Q.halfBad : Q.half, { a, e }); }
-        if (regular && a === 12 && e < 12 && !lv.mpUs) { lv.mpUs = true; quip('mpus' + key, Q.matchPointUs, {}, 'good'); }
-        if (regular && e === 12 && a < 12 && !lv.mpThem) { lv.mpThem = true; quip('mpthem' + key, Q.matchPointThem, {}, 'bad'); }
-        if (regular && a === 12 && e === 12 && !lv.ot) { lv.ot = true; quip('ot' + key, Q.overtime); }
-        if (!lv.cb && lv.maxDeficit >= 4 && a >= e) { lv.cb = true; quip('cb' + key, Q.comeback, { d: lv.maxDeficit }, 'good'); }
+        if (n === 3 || n === 5 || n === 7) quip('streak' + key + total, wonRound ? Q.streakWin : Q.streakLoss, { n }, wonRound ? 'good' : 'bad', 0, 'Série de ' + n);
+        if (regular && total === 12 && !lv.half) { lv.half = true; quip('half' + key, a - e >= 3 ? Q.halfGood : e - a >= 3 ? Q.halfBad : Q.half, { a, e }, '', 0, 'Mi-temps'); }
+        if (regular && a === 12 && e < 12 && !lv.mpUs) { lv.mpUs = true; quip('mpus' + key, Q.matchPointUs, {}, 'good', 0, 'Balle de match'); }
+        if (regular && e === 12 && a < 12 && !lv.mpThem) { lv.mpThem = true; quip('mpthem' + key, Q.matchPointThem, {}, 'bad', 0, 'Balle de match'); }
+        if (regular && a === 12 && e === 12 && !lv.ot) { lv.ot = true; quip('ot' + key, Q.overtime, {}, '', 0, 'Prolongation'); }
+        if (!lv.cb && lv.maxDeficit >= 4 && a >= e) { lv.cb = true; quip('cb' + key, Q.comeback, { d: lv.maxDeficit }, 'epic', 0, 'Remontada'); }
       }
     } else if (st !== 'INGAME') lv.key = '';
     // Sélection : agent verrouillé et map, comparés à tes stats
@@ -4929,15 +5408,15 @@ refreshAmbience();setInterval(refreshAmbience,2500);
         lastPick = k;
         const ag = (stats.mains || []).find(x => x.name === live.agent);
         const best = (stats.best_agents || [])[0];
-        if (best && best.name === live.agent) quip('ab' + k, Q.agentBest, { agent: live.agent, wr: best.winrate }, 'good', 60000);
-        else if (ag) quip('am' + k, Q.agentMain, { agent: live.agent, games: ag.games, wr: ag.winrate }, '', 60000);
-        else quip('ar' + k, Q.agentRare, { agent: live.agent }, '', 60000);
+        if (best && best.name === live.agent) quip('ab' + k, Q.agentBest, { agent: live.agent, wr: best.winrate }, 'good', 60000, 'Sélection');
+        else if (ag) quip('am' + k, Q.agentMain, { agent: live.agent, games: ag.games, wr: ag.winrate }, '', 60000, 'Sélection');
+        else quip('ar' + k, Q.agentRare, { agent: live.agent }, '', 60000, 'Sélection');
         const cb = [...((stats.combos || {}).best || []), ...((stats.combos || {}).worst || [])].find(x => x.agent === live.agent && x.map === live.map);
-        if (cb) quip('cb' + k, cb.winrate >= 55 ? Q.comboGood : Q.comboBad, { agent: live.agent, map: live.map, wr: cb.winrate, games: cb.games }, cb.winrate >= 55 ? 'good' : 'bad', 60000);
+        if (cb) quip('cb' + k, cb.winrate >= 55 ? Q.comboGood : Q.comboBad, { agent: live.agent, map: live.map, wr: cb.winrate, games: cb.games }, cb.winrate >= 55 ? 'good' : 'bad', 60000, 'Combo');
         else if (live.map) {
           const good = (stats.best_maps || []).find(x => x.name === live.map), bad = (stats.worst_maps || []).find(x => x.name === live.map);
-          if (good) quip('mg' + k, Q.mapGood, { map: live.map, wr: good.winrate, games: good.games }, 'good', 60000);
-          else if (bad) quip('mb' + k, Q.mapBad, { map: live.map, wr: bad.winrate, games: bad.games }, 'bad', 60000);
+          if (good) quip('mg' + k, Q.mapGood, { map: live.map, wr: good.winrate, games: good.games }, 'good', 60000, 'La map');
+          else if (bad) quip('mb' + k, Q.mapBad, { map: live.map, wr: bad.winrate, games: bad.games }, 'bad', 60000, 'La map');
         }
       }
     } else if (st !== 'PREGAME') lastPick = '';
@@ -4947,36 +5426,70 @@ refreshAmbience();setInterval(refreshAmbience,2500);
       if (lastSeenMatch === null) lastSeenMatch = rc.match_id;
       else if (rc.match_id !== lastSeenMatch) {
         lastSeenMatch = rc.match_id;
-        const me = rc.me || {}, mu = me.multis || {};
+        const me = rc.me || {}, mu = me.multis || {}, id = rc.match_id;
         const kdv = (me.kills || 0) / Math.max(1, me.deaths || 0);
-        if (mu.ACE) quip('ace' + rc.match_id, Q.ace, { n: (me.best_round || {}).n || '?' }, 'good', 0);
+        const bestN = (me.best_round || {}).n || '?';
+        // Les plus gros moments d'abord : la file garde les premiers arrivés
+        if (mu.ACE) quip('ace' + id, Q.ace, { n: bestN }, 'epic', 0, 'ACE');
         const big = (me.clutches || []).filter(c => c.vs >= 3).sort((x, y) => y.vs - x.vs)[0];
-        if (big) quip('cl' + rc.match_id, Q.clutchBig, { vs: big.vs, n: big.round }, 'good', 0);
-        if (me.mvp_match) quip('mvp' + rc.match_id, Q.mvp, {}, 'good', 0);
-        if (rc.result === 'win' && (rc.rounds_won + rc.rounds_lost) > 24) quip('otw' + rc.match_id, Q.otWin, {}, 'good', 0);
-        if (rc.result === 'loss' && rc.rounds_lost - rc.rounds_won >= 7) quip('st' + rc.match_id, Q.stomped, { w: rc.rounds_won, l: rc.rounds_lost }, 'bad', 0);
-        else if (kdv < 0.6 && me.deaths >= 10) quip('ro' + rc.match_id, Q.rough, { kd: fr(kdv.toFixed(2)), k: me.kills, d: me.deaths, a: me.assists }, 'bad', 0);
+        if (big) quip('cl' + id, Q.clutchBig, { vs: big.vs, n: big.round }, big.vs >= 4 ? 'epic' : 'good', 0, 'Clutch 1v' + big.vs);
+        if (me.mvp_match) quip('mvp' + id, Q.mvp, {}, 'epic', 0, 'MVP');
+        else if (me.mvp_team) quip('tmvp' + id, Q.teamMvp, {}, 'good', 0, 'MVP d’équipe');
+        if (!mu.ACE && mu['4K']) quip('4k' + id, Q.quad, { n: bestN }, 'good', 0, '4K');
+        if (rc.result === 'win' && (rc.rounds_won + rc.rounds_lost) > 24) quip('otw' + id, Q.otWin, {}, 'good', 0, 'Prolongation');
+        const rounds = rc.rounds || [];
+        const thrifty = rounds.filter(r => r.win && r.ceremony === 'Thrifty').length;
+        const flaw = rounds.filter(r => r.win && r.ceremony === 'Flawless').length;
+        if (thrifty) quip('th' + id, Q.thrifty, { what: thrifty > 1 ? thrifty + ' manches gagnées' : 'Une manche gagnée' }, 'good', 0, 'Éco gagnée', true);
+        if (flaw >= 3) quip('fl' + id, Q.flawless, { n: flaw }, 'good', 0, 'Flawless', true);
+        if ((me.fd || 0) >= 5) quip('fb' + id, Q.firstBlood, { n: me.fd }, 'good', 0, 'First blood', true);
+        const allies = (rc.players || []).filter(p => p.team === 'ally');
+        const last = allies.length >= 4 && !mu.ACE && !big && kdv < 1 && allies.every(p => p.self || (p.score || 0) > (me.score || 0));
+        if (rc.result === 'loss' && rc.rounds_lost - rc.rounds_won >= 7) quip('st' + id, Q.stomped, { w: rc.rounds_won, l: rc.rounds_lost }, 'bad', 0, 'Raclée');
+        else if (kdv < 0.6 && me.deaths >= 10) quip('ro' + id, Q.rough, { kd: fr(kdv.toFixed(2)), k: me.kills, d: me.deaths, a: me.assists }, 'bad', 0);
+        else if (last) quip('bf' + id, Q.bottomFrag, {}, 'bad', 0, 'Bottom frag');
         const ms = view(v).matches || [];
         let n = 0; while (n < ms.length && ms[n].result === (ms[0] || {}).result) n++;
-        if (ms[0] && ms[0].result === 'loss' && n >= 3) quip('ls' + rc.match_id, Q.lossStreak, {}, 'bad', 0);
-        if (ms[0] && ms[0].result === 'win' && n >= 3) quip('ws' + rc.match_id, Q.winStreak, { n }, 'good', 0);
+        if (ms[0] && ms[0].result === 'loss' && n >= 3) quip('ls' + id, Q.lossStreak, {}, 'bad', 0, n + ' défaites');
+        if (ms[0] && ms[0].result === 'win' && n >= 3) quip('ws' + id, Q.winStreak, { n }, n >= 5 ? 'epic' : 'good', 0, n + ' victoires');
       }
+    }
+    // Rang : montée, descente, gros gain ou grosse perte de RR
+    const rk = v.rank;
+    if (rk && rk.tier_id != null) {
+      if (lastTier !== null && rk.tier_id > lastTier) quip('rup' + rk.tier_id, Q.rankUp, { tier: rk.tier }, 'epic', 0, 'Rank up');
+      else if (lastTier !== null && rk.tier_id < lastTier) quip('rdn' + rk.tier_id, Q.rankDown, { tier: rk.tier }, 'bad', 0, 'Rang');
+      lastTier = rk.tier_id;
+    }
+    if (rk && rk.elo != null) {
+      if (lastElo !== null && rk.elo !== lastElo && rk.last_change != null) {
+        const lc = +rk.last_change;
+        if (lc >= 25) quip('rr' + rk.elo, Q.rrUp, { rr: lc }, 'good', 0, 'RR');
+        else if (lc <= -25) quip('rr' + rk.elo, Q.rrDown, { rr: lc }, 'bad', 0, 'RR');
+      }
+      lastElo = rk.elo;
+    }
+    // Tard dans la nuit, dans les menus (au plus une fois toutes les 2 heures)
+    const hr = new Date().getHours();
+    if (st === 'MENUS' && hr >= 2 && hr < 6) {
+      const d = new Date();
+      quip('late', Q.lateNight, { h: d.getHours() + ' h ' + String(d.getMinutes()).padStart(2, '0') }, '', 7200000, 'Il est tard');
     }
     // Fun fact de temps en temps dans les menus (toutes les 12 minutes)
     if (st === 'MENUS' && stats && stats.games && Date.now() - lastQuipFact > 720000) {
       lastQuipFact = Date.now();
       const facts = [], du = stats.duels || {}, sd = stats.sides || {}, pt = stats.party || {}, cbb = ((stats.combos || {}).best || [])[0];
-      if (sd.pistol != null) facts.push(Q.fact[0]);
-      if (stats.kast != null) facts.push(Q.fact[1]);
-      if (sd.atk != null && sd.def != null) facts.push(Q.fact[2]);
-      if ((stats.spike || {}).plants) facts.push(Q.fact[3]);
-      if (cbb) facts.push(Q.fact[4]);
-      if (pt.solo && pt.group && pt.solo.games && pt.group.games) facts.push(Q.fact[5]);
-      if (du.multis) facts.push(Q.fact[6]);
+      if (sd.pistol != null) facts.push(pick(Q.fact[0]));
+      if (stats.kast != null) facts.push(pick(Q.fact[1]));
+      if (sd.atk != null && sd.def != null) facts.push(pick(Q.fact[2]));
+      if ((stats.spike || {}).plants) facts.push(pick(Q.fact[3]));
+      if (cbb) facts.push(pick(Q.fact[4]));
+      if (pt.solo && pt.group && pt.solo.games && pt.group.games) facts.push(pick(Q.fact[5]));
+      if (du.multis) facts.push(pick(Q.fact[6]));
       quip('fact' + lastQuipFact, facts, {
         pistol: sd.pistol, kast: stats.kast, atk: sd.atk, def: sd.def, plants: (stats.spike || {}).plants,
         combo: cbb ? cbb.agent + ' sur ' + cbb.map : '', cwr: cbb ? cbb.winrate : '',
-        solo: (pt.solo || {}).winrate, group: (pt.group || {}).winrate, aces: (du.multis || {}).ACE || 0, clutches: du.clutches || 0 }, '', 0);
+        solo: (pt.solo || {}).winrate, group: (pt.group || {}).winrate, aces: (du.multis || {}).ACE || 0, clutches: du.clutches || 0 }, '', 0, 'Fun fact');
     }
   }
   window.valoWatchPc = function (d) {
@@ -4995,6 +5508,7 @@ refreshAmbience();setInterval(refreshAmbience,2500);
     render(v);
     try { selUpdate(v); } catch (e) { console.error(e); }
     try { igUpdate(v); } catch (e) { console.error(e); }
+    try { if (!vlEl.hidden) vlPlace(); } catch (e) {}
     try { watch(v); } catch (e) {}
   };
 
@@ -5062,6 +5576,14 @@ refreshAmbience();setInterval(refreshAmbience,2500);
 
   $('vd-exit').addEventListener('click', () => setShow(false));
   $('valo-back').addEventListener('click', () => setShow(true));
+  // Touche V : passer du dashboard Valorant au dashboard classique et inversement (quand le jeu est ouvert)
+  window.addEventListener('keydown', e => {
+    if (e.key.toLowerCase() !== 'v' || e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
+    if (e.target.closest('input, select, textarea, [contenteditable]') || document.querySelector('dialog[open]')) return;
+    if (!active) return;
+    e.preventDefault();
+    setShow(!showDash);
+  });
   $('vd-refresh').addEventListener('click', async () => {
     try { await fetch('/api/valorant/refresh', { method: 'POST' }); } catch (e) {}
     setTimeout(() => { if (typeof pollValorant === 'function') pollValorant(); }, 4000);

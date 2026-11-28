@@ -36,6 +36,8 @@ _started = False
 _hist = {"cpu": deque(maxlen=HIST), "gpu": deque(maxlen=HIST), "ram": deque(maxlen=HIST)}
 _state: dict = {"ok": False, "error": None, "updated": 0.0}
 _proc_cache: dict = {}
+_slow_pids: set = set()         # processus protégés, trop coûteux à mesurer
+_SLOW_PROC_S = 0.005             # au-delà de 5 ms pour un processus : on arrête de le mesurer
 
 
 def _find_smi() -> str | None:
@@ -154,12 +156,22 @@ def _procs() -> tuple[list[dict], dict | None]:
             except Exception:
                 pass
             continue
+        name = (cached.info or {}).get("name") or ""
+        # Les programmes protégés (services Windows, anti-triche…) obligent psutil à relire
+        # la liste de tous les processus à chaque mesure, en bloquant le reste du programme
+        # (images du boîtier, LEDs). On les repère une fois, puis on ne les mesure plus.
+        if pid in _slow_pids and name.lower() != GAME_EXE:
+            continue
+        t_proc = time.perf_counter()
         try:
-            cpu = cached.cpu_percent(None) / n
-            mem = cached.memory_info().rss
+            with cached.oneshot():
+                cpu = cached.cpu_percent(None) / n
+                mem = cached.memory_info().rss
         except Exception:
             continue
-        name = (cached.info or {}).get("name") or ""
+        finally:
+            if time.perf_counter() - t_proc > _SLOW_PROC_S:
+                _slow_pids.add(pid)
         if name.lower() in ("system idle process", "idle", "memory compression"):
             continue
         rows.append((name, cpu, mem))
@@ -168,6 +180,7 @@ def _procs() -> tuple[list[dict], dict | None]:
     for pid in list(_proc_cache):
         if pid not in seen:
             _proc_cache.pop(pid, None)
+    _slow_pids.intersection_update(seen)
     return top_processes(rows), game
 
 
@@ -211,7 +224,7 @@ def _loop() -> None:
             last_net, last_disk = (t0, net), ((t0, dio) if dio else None)
             if tick % 2 == 0:
                 gpu = _gpu()
-            if tick % 3 == 0:
+            if tick % 10 == 0:
                 procs, game = _procs()
             if tick % 5 == 0:
                 cpu_temp = _cpu_temp()

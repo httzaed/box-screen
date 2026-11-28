@@ -7,6 +7,8 @@ led_fans.py — Contrôleur LED pour Box Screen
     skip     : indices 50-119 (ignorées sur le device principal)
 
   Modes case     : off | wave | beat
+  beat (Rythme)  : flash couleur 1 sur les kicks, couleur 2 sur la caisse claire,
+                   scintillement léger sur les charleys, lueur de 6 % entre les coups
   Modes fans     : off | spin_bpm | spin_fixed | static | beat_pulse | beat_pulse_dual
   Modes keyboard : off | static | wave | beat_pulse | beat_pulse_dual | sync_fans
 
@@ -93,6 +95,7 @@ _keyboard_lock = threading.Lock()
 
 # ── Palette ───────────────────────────────────────────────────────────────────
 from led_colors import COLORS, resolve_color
+from rhythm_dsp import beat_mix
 
 # ── Couleur partagée pour synchronisation avec visualiseur ───────────────────────
 import threading
@@ -125,6 +128,10 @@ class BeatPulseDualState:
 
 
 _dual_state = BeatPulseDualState()
+
+# Mode Rythme : lueur minimale entre deux coups (évite l'effet stroboscope)
+BEAT_FLOOR = 0.06
+_beat_mix_state = {}   # zone -> dernier mélange couleur 1 / couleur 2
 
 
 def _get_current_fan_color() -> tuple:
@@ -290,38 +297,74 @@ def _prepare_keyboard(kb):
     print(f"[LED] Mode clavier: {mode.name}, luminosite={getattr(mode, 'brightness', 'n/a')}")
 
 
+_keyboard_missing_logged = False
+_ghub_last_error = None
+
+
+def _openrgb_keyboard(expected_name):
+    """Clavier vu par OpenRGB, ou None. Ferme toujours la connexion inutilisée."""
+    client = None
+    try:
+        import led_wave as _lw
+        if not _lw._ensure_server():
+            return None
+        from openrgb import OpenRGBClient
+        client = OpenRGBClient()
+        kb = _select_keyboard(client.devices, expected_name)
+        if kb is None:
+            return None
+        _prepare_keyboard(kb)
+        client = None  # le clavier garde cette connexion
+        return kb
+    except Exception as e:
+        print(f"[LED] connexion clavier OpenRGB échouée: {e}")
+        return None
+    finally:
+        if client is not None:
+            try:
+                client.disconnect()
+            except Exception:
+                pass
+
+
+def _ghub_keyboard(n_leds):
+    """Clavier piloté via G Hub (quand G Hub le garde), ou None."""
+    global _ghub_last_error
+    try:
+        from ghub_keyboard import GHubKeyboard
+        kb = GHubKeyboard(n_leds=n_leds)
+        _ghub_last_error = None
+        return kb
+    except Exception as e:
+        if str(e) != _ghub_last_error:
+            print(f"[LED] G Hub: {e}")
+            _ghub_last_error = str(e)
+        return None
+
+
 def _connect_keyboard():
-    """Connecte au clavier RGB (device séparé)."""
-    global _keyboard_device
+    """Connecte le clavier RGB : OpenRGB d'abord, sinon via G Hub."""
+    global _keyboard_device, _keyboard_missing_logged
     with _keyboard_lock:
         if _keyboard_device is not None:
             return True, _keyboard_device
 
+        # Les indices changent quand OpenRGB détecte de nouveaux périphériques.
         try:
-            import led_wave as _lw
-            if not _lw._ensure_server():
-                return False, None
-
-            # Le clavier est un device séparé dans le client OpenRGB
-            from openrgb import OpenRGBClient
-            client = OpenRGBClient()
-
-            # Les indices changent quand OpenRGB détecte de nouveaux périphériques.
-            kb_cfg = json.loads((_HERE / "led_map.json").read_text()).get("keyboard", {})
-            expected_name = kb_cfg.get("name")
-            kb = _select_keyboard(client.devices, expected_name)
-            if kb is not None:
-                _prepare_keyboard(kb)
-
-                _keyboard_device = kb
-                print(f"[LED] Clavier connecté: {kb.name} ({len(kb.leds)} LEDs)")
-                return True, _keyboard_device
-            else:
-                print(f"[LED] Clavier configuré introuvable ({expected_name}) — clavier désactivé")
-                return False, None
-        except Exception as e:
-            print(f"[LED] connexion clavier échouée: {e}")
+            kb_cfg = json.loads((_HERE / "led_map.json").read_text(encoding="utf-8")).get("keyboard", {})
+        except Exception:
+            kb_cfg = {}
+        expected_name = kb_cfg.get("name")
+        kb = _openrgb_keyboard(expected_name) or _ghub_keyboard(kb_cfg.get("leds", 94))
+        if kb is None:
+            if not _keyboard_missing_logged:
+                print(f"[LED] Clavier introuvable ({expected_name}) ni dans OpenRGB ni via G Hub — nouvel essai de plus en plus espacé")
+                _keyboard_missing_logged = True
             return False, None
+        _keyboard_missing_logged = False
+        _keyboard_device = kb
+        print(f"[LED] Clavier connecté: {kb.name} ({len(kb.leds)} LEDs)")
+        return True, _keyboard_device
 
 
 def _ensure_keyboard():
@@ -358,23 +401,38 @@ def _rot_step() -> float:
 # ── Animation ─────────────────────────────────────────────────────────────────
 def _clamp(v): return max(0, min(255, int(v)))
 
+_win32 = None
+
+
+def _win32_api():
+    """user32 et la structure MonitorInfo, préparés une seule fois (appelé toutes les 0,5 s)."""
+    global _win32
+    if _win32 is None:
+        import ctypes
+        from ctypes import wintypes
+
+        class MonitorInfo(ctypes.Structure):
+            _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                        ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        user32.GetForegroundWindow.restype = wintypes.HWND
+        user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+        user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+        user32.MonitorFromWindow.restype = wintypes.HANDLE
+        user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MonitorInfo)]
+        _win32 = (user32, MonitorInfo)
+    return _win32
+
+
 def _valorant_fullscreen_active():
     """Only override LEDs while Valorant is foreground and fills its monitor."""
     import ctypes
     from ctypes import wintypes
     import psutil
 
-    class MonitorInfo(ctypes.Structure):
-        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
-                    ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
-
-    user32 = ctypes.WinDLL("user32", use_last_error=True)
-    user32.GetForegroundWindow.restype = wintypes.HWND
-    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
-    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
-    user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
-    user32.MonitorFromWindow.restype = wintypes.HANDLE
-    user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MonitorInfo)]
+    user32, MonitorInfo = _win32_api()
     window = user32.GetForegroundWindow()
     if not window:
         return False
@@ -457,6 +515,7 @@ def _run_inner(stop_event):
     wave_off      = 0.0
     hue_off       = 0.0
     breathe_t     = 0.0
+    breathe_stamp = [None]
 
     import colorsys
 
@@ -467,7 +526,8 @@ def _run_inner(stop_event):
     # Debug timer (affiche le niveau audio toutes les 5s)
     _debug_last_print = 0.0
     _keyboard_error_t = float('-inf')
-    keyboard_retry_at = time.monotonic() + 5.0
+    keyboard_retry_delay = 5.0
+    keyboard_retry_at = time.monotonic() + keyboard_retry_delay
 
     pulse_level = 0.0
     pulse_mix = 0.0
@@ -512,7 +572,9 @@ def _run_inner(stop_event):
             kb_ok, keyboard = _connect_keyboard()
             kb_leds = len(keyboard.leds) if keyboard else 0
             kb_colors = [RGBColor(0, 0, 0)] * kb_leds if keyboard else None
-            keyboard_retry_at = time.monotonic() + 5.0
+            # Espace les essais (5 s, 10 s, 20 s… 2 min) tant que le clavier manque.
+            keyboard_retry_delay = 5.0 if keyboard else min(120.0, keyboard_retry_delay * 2)
+            keyboard_retry_at = time.monotonic() + keyboard_retry_delay
 
         bri        = cfg["brightness"]
         case_spd   = cfg["case_speed"]
@@ -520,19 +582,26 @@ def _run_inner(stop_event):
         n_case     = max(1, int(len(case_idxs) * cfg["case_length"]))
         decay      = max(0.05, cfg["case_decay"])
 
-        beat_bright = 0.0
+        beat_drums = {}
         if cfg["rhythm_mode"] == "legacy" and "beat" in (cfg["fan_mode"], cfg["case_mode"]):
-            # The decay slider sets the approximate visible duration of a kick.
-            # Shorter, quieter upper-band accents leave room for fast subdivisions.
+            # Persistance = traîne visible d'un kick. Caisse claire et charleys
+            # retombent plus vite pour laisser passer les doubles croches.
             try:
-                drums = _bs.get_rhythm_levels(decay / 5.0)
+                # Persistance 5-100 -> traîne de ~70 à 400 ms (avant : 10 à 200 ms, souvent
+                # plus court qu'une image LED : les flashs semblaient aléatoires).
+                kick_release = 0.05 + decay * 0.35
+                beat_drums = {"kick": _bs.get_rhythm_levels(kick_release).get("kick", 0.0)}
+                fast = _bs.get_rhythm_levels(kick_release * 0.7)
+                beat_drums["snare"] = fast.get("snare", 0.0)
+                beat_drums["high"] = _bs.get_rhythm_levels(kick_release * 0.45).get("high", 0.0)
             except Exception:
-                drums = {}
-            beat_bright = max(
-                drums.get("kick", 0.0),
-                0.82 * drums.get("snare", 0.0) ** 1.35,
-                0.50 * drums.get("high", 0.0) ** 2,
-            )
+                beat_drums = {}
+
+        def beat_zone(zone, col1, col2):
+            """Couleur et intensité du mode Rythme pour une zone."""
+            intensity, mix = beat_mix(beat_drums, _beat_mix_state.get(zone, 0.0), BEAT_FLOOR)
+            _beat_mix_state[zone] = mix
+            return lerp(col1, col2, mix), intensity
 
         def c(name):
             return resolve_color(name)
@@ -668,7 +737,10 @@ def _run_inner(stop_event):
                         all_colors[ZONE_OFFSET + idx] = RGBColor(0,0,0)
 
             elif mode == "breathe":
-                breathe_t += 0.015 * speed
+                # Une seule avance par image, même si ventilos et boîtier respirent ensemble.
+                if breathe_stamp[0] != now:
+                    breathe_stamp[0] = now
+                    breathe_t += 0.015 * speed
                 intensity = 0.15 + 0.85 * (0.5 + 0.5 * math.sin(breathe_t))
                 for idx in active:
                     all_colors[ZONE_OFFSET + idx] = mk(*col1, intensity)
@@ -711,16 +783,27 @@ def _run_inner(stop_event):
             active_fan_mode = "breathe"
         fan_primary = c(cfg["fan_color"])
         fan_secondary = c(cfg["fan_color2"])
-        if active_fan_mode == "beat" and last_beat_seq % 2 == 1:
-            fan_primary = fan_secondary
+        fan_beat = 0.0
+        if active_fan_mode == "beat":
+            # Le clavier en « Comme les ventilateurs » suit aussi cette teinte.
+            fan_primary, fan_beat = beat_zone("fan", fan_primary, fan_secondary)
         animate_zone(active_fan_mode, fan_idxs,
                      fan_primary, fan_secondary,
-                     fan_spd, len(fan_idxs), beat_bright)
+                     fan_spd, len(fan_idxs), fan_beat)
 
         # ── Case ─────────────────────────────────────────────────────────
-        animate_zone(cfg["case_mode"], case_idxs,
-                     c(cfg["case_color"]), c(cfg["case_color2"]),
-                     case_spd, n_case, beat_bright)
+        active_case_mode = cfg["case_mode"]
+        case_primary = c(cfg["case_color"])
+        case_secondary = c(cfg["case_color2"])
+        case_beat = 0.0
+        if active_case_mode == "beat" and not impacts_enabled:
+            if now - last_sound_at >= 1.0:
+                active_case_mode = "breathe"   # silence : respiration, comme les ventilos
+            else:
+                case_primary, case_beat = beat_zone("case", case_primary, case_secondary)
+        animate_zone(active_case_mode, case_idxs,
+                     case_primary, case_secondary,
+                     case_spd, n_case, case_beat)
 
         # ── Clavier ───────────────────────────────────────────────────────────
         if keyboard and cfg.get("keyboard_enabled", True):
@@ -784,8 +867,9 @@ def _run_inner(stop_event):
                                     for i, channel in enumerate((color.red, color.green, color.blue))])
                          for color in kb_colors]
 
-        # Temporary game override, after audio effects; never persist it to config.
-        if valorant_active:
+        # Music playback takes priority over the temporary game lighting.
+        import music_playback
+        if valorant_active and not music_playback.is_playing():
             # UI speed 40/100 maps to 4.0; use elapsed time for a steady cycle.
             valorant_breathe_t = math.fmod(valorant_breathe_t + dt * 0.015 * 4.0 / FRAME_TIME, math.tau)
             intensity = 0.15 + 0.85 * (0.5 + 0.5 * math.sin(valorant_breathe_t))
@@ -806,9 +890,16 @@ def _run_inner(stop_event):
             if now - _keyboard_error_t >= 5:
                 print(f"[LED] Envoi clavier echoue: {type(error).__name__}: {error}; nouvel essai dans 5s")
                 _keyboard_error_t = now
+            try:
+                close = getattr(keyboard, "close", None)
+                if close:
+                    close()
+            except Exception:
+                pass
             keyboard = None
             _keyboard_device = None
-            keyboard_retry_at = time.monotonic() + 5.0
+            keyboard_retry_delay = 5.0
+            keyboard_retry_at = time.monotonic() + keyboard_retry_delay
         stop_event.wait(max(0.0, FRAME_TIME - (time.monotonic() - now)))
 
 

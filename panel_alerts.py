@@ -11,6 +11,7 @@ le temps de l'alerte (carte qui entre par la gauche), puis la retire. Rien ne ch
 from __future__ import annotations
 
 import io
+import math
 import threading
 import time
 from collections import deque
@@ -18,6 +19,7 @@ from collections import deque
 from PIL import Image, ImageDraw, ImageFont
 
 W, H = 1920, 462
+ROTATE = 180                     # panel._image_to_jpeg tourne déjà chaque image de 180° (écran monté à l'envers)
 SLIDE = 0.35                     # secondes d'entrée et de sortie
 GAP = 0.8                        # pause entre deux alertes
 
@@ -26,7 +28,9 @@ _queue: deque = deque(maxlen=3)
 _current: dict | None = None
 _fonts: dict = {}
 
-COLORS = {"good": (240, 237, 232), "bad": (255, 77, 94), "pc": (255, 179, 71), "": (208, 2, 27)}
+COLORS = {"good": (240, 237, 232), "bad": (255, 77, 94), "pc": (255, 179, 71), "epic": (255, 200, 60), "": (208, 2, 27)}
+FLASH = 0.28                     # durée du flash de couleur à l'entrée (secondes)
+SHAKE = 0.5                      # durée du tremblement des alertes « bad » et « epic »
 BG = (12, 6, 9)
 
 
@@ -128,6 +132,13 @@ def overlay(img: Image.Image, now: float | None = None) -> Image.Image:
     d.polygon([(0, 0), (x1, 0), (x1 - skew, H), (0, H)], fill=BG + (238,))
     d.polygon([(x1 - 22, 0), (x1, 0), (x1 - skew, H), (x1 - skew - 22, H)], fill=col + (255,))
     d.line([(0, 3), (x1 - 22, 3)], fill=col + (255,), width=6)
+    if a["kind"] == "epic":
+        d.line([(0, 16), (x1 - 26, 16)], fill=col + (160,), width=3)
+        # Éclats qui défilent derrière le texte
+        for i in range(14):
+            sx = int((i * 137 + t * 900) % max(1, x1 - skew - 40))
+            sy = 60 + (i * 53) % (H - 120)
+            d.line([(sx, sy), (sx + 46, sy - 46)], fill=col + (70,), width=4)
     # Barre de vie en bas
     left = max(0.0, 1 - t / life)
     d.rectangle([0, H - 10, int((x1 - skew - 22) * left), H], fill=col + (255,))
@@ -150,7 +161,16 @@ def overlay(img: Image.Image, now: float | None = None) -> Image.Image:
     for ln in lines:
         d.text((tx, y), ln, font=f, fill=(240, 237, 232, 255))
         y += line_h
-    out.paste(layer, (0, 0), layer)
+    # Flash de couleur sur tout l'écran à l'entrée (plus fort pour les gros moments)
+    if t < FLASH:
+        alpha = int((1 - t / FLASH) * (150 if a["kind"] == "epic" else 85))
+        out.paste(Image.new("RGB", (W, H), col), (0, 0), Image.new("L", (W, H), alpha))
+    # Tremblement juste après l'entrée pour « Aïe » et les gros moments
+    dx = 0
+    if a["kind"] in ("bad", "epic") and SLIDE <= t < SLIDE + SHAKE:
+        p = (t - SLIDE) / SHAKE
+        dx = int(math.sin(p * math.pi * 7) * 16 * (1 - p))
+    out.paste(layer, (dx, 0), layer)
     return out
 
 
@@ -162,9 +182,15 @@ def wrap(send_frame):
     def _send(ep_out, ep_in, jpeg_data: bytes):
         if active():
             try:
-                img = Image.open(io.BytesIO(jpeg_data))
+                # La frame reçue est déjà tournée pour l'écran : on la remet à l'endroit, on dessine, on la retourne
+                img = Image.open(io.BytesIO(jpeg_data)).convert("RGB")
+                if ROTATE:
+                    img = img.rotate(ROTATE)
+                out = overlay(img)
+                if ROTATE:
+                    out = out.rotate(ROTATE)
                 buf = io.BytesIO()
-                overlay(img).save(buf, format="JPEG", quality=85)
+                out.save(buf, format="JPEG", quality=85)
                 jpeg_data = buf.getvalue()
             except Exception as e:
                 print(f"[ALERTES] Dessin impossible : {e}")

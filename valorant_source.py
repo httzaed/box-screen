@@ -274,6 +274,10 @@ def parse_matches(payload: dict, puuid: str) -> list[dict]:
             result = "loss"
         else:
             result = None
+        try:
+            rc = (parse_match_recap(m, puuid) or {}).get("me") or {}
+        except Exception:
+            rc = {}
         out.append({
             "match_id": meta.get("match_id"),
             "map": map_name((meta.get("map") or {}).get("name")),
@@ -288,6 +292,8 @@ def parse_matches(payload: dict, puuid: str) -> list[dict]:
             "assists": stats.get("assists"),
             "score": stats.get("score"),
             "hs_pct": round(100 * int(stats.get("headshots") or 0) / shots) if shots else None,
+            "perf": rc.get("perf"), "grade": rc.get("grade"),
+            "perf_rank": rc.get("perf_rank"), "lobby": rc.get("lobby"),
         })
     return out
 
@@ -418,6 +424,61 @@ def _round_kind(result) -> str:
     return "other"
 
 
+def _pu(x) -> str | None:
+    return (x or {}).get("puuid")
+
+
+def is_real_kill(k: dict, team_of: dict) -> bool:
+    """Vrai kill : un tueur, qui n'est pas la victime, et dans l'autre équipe.
+
+    Quand tu meurs de la spike (ou d'une chute), Riot te met comme ton propre tueur :
+    ce n'est pas un kill, et le tableau officiel ne le compte pas. Pareil pour un allié tué.
+    """
+    kp, vp = _pu(k.get("killer")), _pu(k.get("victim"))
+    if not kp or kp == vp:
+        return False
+    tk, tv = team_of.get(kp), team_of.get(vp)
+    return not (tk is not None and tv is not None and str(tk).lower() == str(tv).lower())
+
+
+# Note de performance (0 à 1000, 500 = joueur moyen), dans l'esprit du Tracker Score.
+# Chaque critère est comparé à un joueur moyen de Valorant classé (1,0 = dans la moyenne),
+# borné entre 0 et 2,5, puis pondéré. Une petite part dépend des manches gagnées par ton équipe.
+PERF_REF = {"kpr": 0.72, "dpr": 0.72, "apr": 0.26, "adr": 135.0, "kast": 0.72}
+PERF_WEIGHTS = {"combat": 0.25, "degats": 0.25, "kast": 0.15, "survie": 0.10,
+                "entrees": 0.10, "impact": 0.10, "assists": 0.05}
+PERF_GRADES = ((850, "S"), (750, "A+"), (650, "A"), (560, "B+"), (470, "B"), (380, "C"), (0, "D"))
+
+
+def perf_grade(score: int) -> str:
+    return next(g for floor, g in PERF_GRADES if score >= floor)
+
+
+def perf_score(p: dict, rounds: int, round_share: float | None = None) -> dict:
+    """p : kills, deaths, assists, adr, kast (manches), fb, fd, multi_pts, clutch_pts."""
+    R = max(1, int(rounds or 0))
+    f = lambda key: float(p.get(key) or 0)
+    kpr, dpr, apr = f("kills") / R, f("deaths") / R, f("assists") / R
+    ref = PERF_REF
+    parts = {
+        "combat": kpr / ref["kpr"],
+        "degats": (f("adr") / ref["adr"]) if p.get("adr") is not None else kpr / ref["kpr"],
+        "kast": (f("kast") / R) / ref["kast"],
+        "survie": (1 - dpr) / (1 - ref["dpr"]),
+        "entrees": 1 + 5 * (f("fb") - f("fd")) / R,
+        "impact": 0.85 + 3 * (f("multi_pts") + f("clutch_pts")) / R,
+        "assists": apr / ref["apr"],
+    }
+    parts = {k: max(0.0, min(2.5, v)) for k, v in parts.items()}
+    rating = sum(PERF_WEIGHTS[k] * v for k, v in parts.items())
+    if round_share is not None:
+        rating += 0.2 * (round_share - 0.5)
+    score = int(round(max(0.0, min(1000.0, 500 * rating))))
+    # Pour l'affichage : 0 à 100, 50 = dans la moyenne
+    return {"score": score, "grade": perf_grade(score),
+            "parts": {k: int(round(min(2.0, v) * 50)) for k, v in parts.items()}}
+
+
 def parse_match_recap(m: dict, puuid: str) -> dict | None:
     """Match complet HenrikDev v4 → récap de fin de match.
 
@@ -443,13 +504,61 @@ def parse_match_recap(m: dict, puuid: str) -> dict | None:
     by_round: dict = {}
     for k in kills:
         by_round.setdefault(k.get("round"), []).append(k)
-    fb, fd = {}, {}
     for ks in by_round.values():
         ks.sort(key=lambda k: k.get("time_in_round_in_ms") or 0)
-        first = ks[0]
-        kp, vp = (first.get("killer") or {}).get("puuid"), (first.get("victim") or {}).get("puuid")
-        fb[kp] = fb.get(kp, 0) + 1
-        fd[vp] = fd.get(vp, 0) + 1
+
+    # Par joueur et par manche : first blood / first death, KAST, multi-kills, clutchs
+    pids = [p.get("puuid") for p in players]
+    acc = {pu: {"fb": 0, "fd": 0, "kast": 0, "multi_pts": 0.0, "clutch_pts": 0.0,
+                "multis": {"3K": 0, "4K": 0, "ACE": 0}, "clutches": [], "rk": {}} for pu in pids}
+    for i, r in enumerate(rounds):
+        rid = r.get("id", i)
+        ks = by_round.get(rid, [])
+        real = [k for k in ks if is_real_kill(k, team_of)]
+        if real and _pu(real[0].get("killer")) in acc:
+            acc[_pu(real[0].get("killer"))]["fb"] += 1
+        if ks and _pu(ks[0].get("victim")) in acc:
+            acc[_pu(ks[0].get("victim"))]["fd"] += 1
+        kc: dict = {}
+        for k in real:
+            kc[_pu(k.get("killer"))] = kc.get(_pu(k.get("killer")), 0) + 1
+        assisted = {_pu(a) for k in ks for a in k.get("assistants") or []}
+        deaths = {}
+        for k in ks:
+            deaths.setdefault(_pu(k.get("victim")), k)
+        alive = {t: {pu for pu in pids if team_of.get(pu) == t} for t in set(team_of.values())}
+        last_man: dict = {}
+        for k in ks:
+            v = _pu(k.get("victim"))
+            for t, s_ in alive.items():
+                s_.discard(v)
+            for t, s_ in alive.items():
+                others = sum(len(o) for t2, o in alive.items() if t2 != t)
+                if t not in last_man and len(s_) == 1 and others:
+                    last_man[t] = (next(iter(s_)), others)
+        for t, (pu, vs) in last_man.items():
+            if r.get("winning_team") == t and pu in acc:
+                acc[pu]["clutches"].append({"round": i + 1, "vs": vs})
+                acc[pu]["clutch_pts"] += 0.5 * vs
+        for pu in pids:
+            a = acc[pu]
+            n = kc.get(pu, 0)
+            a["rk"][rid] = n
+            if n >= 5:
+                a["multis"]["ACE"] += 1
+            elif n >= 3:
+                a["multis"]["4K" if n == 4 else "3K"] += 1
+            if n >= 3:
+                a["multi_pts"] += n - 2
+            death = deaths.get(pu)
+            traded = False
+            if death:
+                killer, t0 = _pu(death.get("killer")), death.get("time_in_round_in_ms") or 0
+                traded = bool(killer and killer != pu) and any(
+                    _pu(k.get("victim")) == killer and team_of.get(_pu(k.get("killer"))) == team_of.get(pu)
+                    and 0 <= (k.get("time_in_round_in_ms") or 0) - t0 <= 5000 for k in real)
+            if n or pu in assisted or not death or traded:
+                a["kast"] += 1
 
     def visible(p):
         return p.get("puuid") == puuid or (my_party and p.get("party_id") == my_party)
@@ -457,41 +566,54 @@ def parse_match_recap(m: dict, puuid: str) -> dict | None:
     rows = []
     for p in players:
         st = p.get("stats") or {}
+        a = acc.get(p.get("puuid")) or {}
         shots = sum(int(st.get(k) or 0) for k in ("headshots", "bodyshots", "legshots"))
         dmg = (st.get("damage") or {}).get("dealt")
         score = st.get("score") or 0
         show = visible(p)
+        ally = p.get("team_id") == my_team
+        t = teams.get(p.get("team_id")) or {}
+        tw = (t.get("rounds") or {}).get("won")
+        adr = round(dmg / n_rounds) if dmg is not None else None
+        perf = perf_score({"kills": st.get("kills"), "deaths": st.get("deaths"), "assists": st.get("assists"),
+                           "adr": adr, "kast": a.get("kast", 0), "fb": a.get("fb", 0), "fd": a.get("fd", 0),
+                           "multi_pts": a.get("multi_pts", 0), "clutch_pts": a.get("clutch_pts", 0)},
+                          n_rounds, (tw / n_rounds) if tw is not None and rounds else None)
         rows.append({
-            "team": "ally" if p.get("team_id") == my_team else "enemy",
+            "team": "ally" if ally else "enemy",
             "agent": (p.get("agent") or {}).get("name") or "",
             "name": (p.get("name") or "") if show else "", "tag": (p.get("tag") or "") if show else "",
             "self": p.get("puuid") == puuid, "party": bool(show and p.get("puuid") != puuid),
             "kills": st.get("kills"), "deaths": st.get("deaths"), "assists": st.get("assists"),
-            "acs": round(score / n_rounds), "adr": round(dmg / n_rounds) if dmg is not None else None,
+            "acs": round(score / n_rounds), "adr": adr,
             "hs": round(100 * int(st.get("headshots") or 0) / shots) if shots else None,
-            "fb": fb.get(p.get("puuid"), 0), "score": score,
+            "fb": a.get("fb", 0), "score": score,
+            "kast": round(100 * a.get("kast", 0) / n_rounds) if rounds else None,
+            "perf": perf["score"], "grade": perf["grade"], "_parts": perf["parts"],
         })
+    for i, r_ in enumerate(sorted(rows, key=lambda r_: -r_["perf"])):
+        r_["perf_rank"] = i + 1
     rows.sort(key=lambda r: (r["team"] != "ally", -r["acs"]))
     for key, pool in (("mvp_match", rows), ("mvp_team", [r for r in rows if r["team"] == "ally"])):
         if pool:
             max(pool, key=lambda r: r["score"])[key] = True
 
-    my_kills_by_round: dict = {}
+    mine = acc.get(puuid) or {}
+    my_kills_by_round = mine.get("rk") or {}
     weapons: dict = {}
     for k in kills:
-        if (k.get("killer") or {}).get("puuid") == puuid:
-            my_kills_by_round[k.get("round")] = my_kills_by_round.get(k.get("round"), 0) + 1
+        if _pu(k.get("killer")) == puuid and is_real_kill(k, team_of):
             w = (k.get("weapon") or {}).get("name") or "Capacité"
             weapons[w] = weapons.get(w, 0) + 1
 
-    rr, clutches = [], []
+    rr = []
     for i, r in enumerate(rounds):
         rid = r.get("id", i)
         win = r.get("winning_team") == my_team
         ally_val = enemy_val = 0
         my_weapon = ""
         for s_ in r.get("stats") or []:
-            pu = (s_.get("player") or {}).get("puuid")
+            pu = _pu(s_.get("player"))
             eco = s_.get("economy") or {}
             val = int(eco.get("loadout_value") or 0)
             if team_of.get(pu) == my_team:
@@ -500,33 +622,16 @@ def parse_match_recap(m: dict, puuid: str) -> dict | None:
                 enemy_val += val
             if pu == puuid:
                 my_weapon = (eco.get("weapon") or {}).get("name") or ""
-        # Clutch : tu es le dernier vivant de ton équipe et la manche est gagnée
-        alive = {pu for pu, t in team_of.items() if t == my_team}
-        enemies = {pu for pu, t in team_of.items() if t != my_team}
-        clutch_vs = None
-        for k in sorted(by_round.get(rid, []), key=lambda k: k.get("time_in_round_in_ms") or 0):
-            v = (k.get("victim") or {}).get("puuid")
-            alive.discard(v)
-            enemies.discard(v)
-            if clutch_vs is None and alive == {puuid} and enemies:
-                clutch_vs = len(enemies)
-        if win and clutch_vs:
-            clutches.append({"round": i + 1, "vs": clutch_vs})
         rr.append({"n": i + 1, "win": win, "kind": _round_kind(r.get("result")),
                    "ceremony": _CEREMONIES.get(str(r.get("ceremony") or "").lower(), ""),
                    "my_kills": my_kills_by_round.get(rid, 0), "weapon": my_weapon,
                    "eco_ally": ally_val, "eco_enemy": enemy_val})
 
-    multis = {"3K": 0, "4K": 0, "ACE": 0}
-    for n in my_kills_by_round.values():
-        if n >= 5:
-            multis["ACE"] += 1
-        elif n == 4:
-            multis["4K"] += 1
-        elif n == 3:
-            multis["3K"] += 1
     best = max(rr, key=lambda x: (x["my_kills"], -x["n"])) if rr else None
     myrow = next(r for r in rows if r["self"])
+    parts = myrow.get("_parts") or {}
+    for r_ in rows:
+        r_.pop("_parts", None)
     won = mine_t.get("won")
     result = "draw" if rw is not None and rw == rl else ("win" if won else "loss" if won is False else None)
     q = meta.get("queue") or {}
@@ -536,7 +641,9 @@ def parse_match_recap(m: dict, puuid: str) -> dict | None:
         "mode": queue_name(q.get("id"), q.get("name") or ""),
         "duration_s": round((meta.get("game_length_in_ms") or 0) / 1000) or None,
         "agent": myrow["agent"], "result": result, "rounds_won": rw, "rounds_lost": rl,
-        "me": {**myrow, "fd": fd.get(puuid, 0), "clutches": clutches, "multis": multis,
+        "me": {**myrow, "fd": mine.get("fd", 0), "clutches": mine.get("clutches", []),
+               "multis": mine.get("multis", {"3K": 0, "4K": 0, "ACE": 0}),
+               "perf_parts": parts, "lobby": len(rows),
                "best_round": {"n": best["n"], "kills": best["my_kills"]} if best and best["my_kills"] else None,
                "weapons": sorted(weapons.items(), key=lambda x: -x[1])[:3]},
         "players": rows, "rounds": rr,
@@ -667,6 +774,23 @@ _LOCAL_SSL.verify_mode = ssl.CERT_NONE
 
 _local_session: dict = {"port": None, "auth": None, "puuid": None, "checked": 0.0}
 
+# Ratés consécutifs de l'API locale (requête en échec, présence absente) avant de
+# déclarer le jeu fermé : un seul raté ne doit pas faire clignoter le panel.
+_LOCAL_MISS_MAX = 3
+_local_miss = {"n": 0}
+
+
+def _local_miss_or_off() -> str | None:
+    """Raté ponctuel : on garde l'état précédent. Raté répété : jeu considéré fermé."""
+    _local_miss["n"] += 1
+    if _local_miss["n"] < _LOCAL_MISS_MAX:
+        with _lock:
+            live = _state["live"]
+            if live.get("running"):
+                return live.get("state") or "MENUS"
+    _set_live_off()
+    return None
+
 
 def _read_lockfile() -> tuple[int, str] | None:
     path = _lockfile_path()
@@ -730,14 +854,13 @@ def _poll_local() -> str | None:
         pres = _local_get(port, auth, "/chat/v4/presences").get("presences") or []
     except Exception:
         # Riot Client ouvert mais API pas prête, ou client en train de se fermer
-        _set_live_off()
-        return None
+        return _local_miss_or_off()
 
     mine = next((p for p in pres if p.get("puuid") == puuid and p.get("product") == "valorant"), None)
     if mine is None:
-        _set_live_off()   # Riot Client ouvert, Valorant pas lancé
-        return None
+        return _local_miss_or_off()   # Riot Client ouvert, Valorant pas lancé (ou présence absente un instant)
 
+    _local_miss["n"] = 0
     info = parse_presence(decode_presence_private(mine.get("private")))
     party, party_ids = parse_party(pres, puuid)
     info["party"] = party
@@ -1139,17 +1262,29 @@ def detail_from_v4(m: dict, puuid: str) -> dict | None:
         pistol = [0, 0]
         eco = {"eco": [0, 0, 0], "force": [0, 0, 0], "full": [0, 0, 0]}   # [gagnées, jouées, tes kills]
         weapons: dict = {}
+        seq, ends, eco_us, eco_them = [], [], [], []      # manche par manche (pour régler les chances de victoire)
         for i, r in enumerate(rounds):
             rid = r.get("id", i)
             win = str(r.get("winning_team") or "") == my_team
+            seq.append("V" if win else "D")
+            ends.append({"elim": "E", "spike": "S", "defuse": "D", "time": "T"}.get(_round_kind(r.get("result")), "?"))
+            us = them = 0
+            for s_ in r.get("stats") or []:
+                v_ = int(((s_.get("economy") or {}).get("loadout_value")) or 0)
+                if team_of.get((s_.get("player") or {}).get("puuid")) == my_team:
+                    us += v_
+                else:
+                    them += v_
+            eco_us.append(round(us / 100))                    # équipement total de l'équipe, en centaines de crédits
+            eco_them.append(round(them / 100))
             ks = sorted(by_round.get(rid, []), key=lambda k: k.get("time_in_round_in_ms") or 0)
             pu = lambda x: (x or {}).get("puuid")
-            if ks:
-                if pu(ks[0].get("killer")) == puuid:
-                    fb += 1
-                if pu(ks[0].get("victim")) == puuid:
-                    fd += 1
-            mine = [k for k in ks if pu(k.get("killer")) == puuid]
+            real = [k for k in ks if is_real_kill(k, team_of)]
+            if real and pu(real[0].get("killer")) == puuid:
+                fb += 1
+            if ks and pu(ks[0].get("victim")) == puuid:
+                fd += 1
+            mine = [k for k in real if pu(k.get("killer")) == puuid]
             for k in mine:
                 w = (k.get("weapon") or {}).get("name") or "Capacité"
                 weapons[w] = weapons.get(w, 0) + 1
@@ -1166,8 +1301,9 @@ def detail_from_v4(m: dict, puuid: str) -> dict | None:
             traded = False
             if death:
                 killer, t0 = pu(death.get("killer")), death.get("time_in_round_in_ms") or 0
-                traded = any(pu(k.get("victim")) == killer and team_of.get(pu(k.get("killer"))) == my_team
-                             and 0 <= (k.get("time_in_round_in_ms") or 0) - t0 <= 5000 for k in ks)
+                traded = bool(killer and killer != puuid) and any(
+                    pu(k.get("victim")) == killer and team_of.get(pu(k.get("killer"))) == my_team
+                    and 0 <= (k.get("time_in_round_in_ms") or 0) - t0 <= 5000 for k in real)
             if n or assist or not death or traded:
                 kast += 1
             # Clutch : dernier vivant de ton équipe, manche gagnée
@@ -1204,9 +1340,11 @@ def detail_from_v4(m: dict, puuid: str) -> dict | None:
         party = me.get("party_id")
         mates = sorted((p.get("name") or "") for p in players
                        if p.get("puuid") != puuid and party and p.get("party_id") == party and p.get("name"))
-        return {"rounds": len(rounds), "fb": fb, "fd": fd, "kast": kast, "clutch": clutch, "multis": multis,
+        return {"v": DETAIL_VERSION, "rounds": len(rounds), "fb": fb, "fd": fd, "kast": kast, "clutch": clutch, "multis": multis,
                 "sides": sides if half else None, "pistol": pistol if half else None, "eco": eco,
-                "weapons": weapons, "plants": plants, "defuses": defuses, "mates": mates}
+                "weapons": weapons, "plants": plants, "defuses": defuses, "mates": mates,
+                "seq": "".join(seq), "ends": "".join(ends), "start": _side(my_team, 0, half) if half else None,
+                "eco_us": eco_us, "eco_them": eco_them}
     except Exception:
         return None
 
@@ -1220,7 +1358,8 @@ def merge_rows(*sources) -> list[dict]:
                 continue
             old = out.get(r["id"])
             if (old is None or (not old.get("season_id") and r.get("season_id")) or (old.get("dmg") is None and r.get("dmg") is not None)
-                    or (not old.get("detail") and r.get("detail")) or (old.get("dmg_rcv") is None and r.get("dmg_rcv") is not None)):
+                    or (not old.get("detail") and r.get("detail")) or (old.get("dmg_rcv") is None and r.get("dmg_rcv") is not None)
+                    or ((r.get("detail") or {}).get("v", 2) > (old.get("detail") or {}).get("v", 2))):
                 out[r["id"]] = {**(old or {}), **{k: v for k, v in r.items() if v not in (None, "")}} if old else dict(r)
     return sorted(out.values(), key=lambda r: r.get("at") or "")
 
@@ -1228,7 +1367,9 @@ def merge_rows(*sources) -> list[dict]:
 # ── Historique local (valorant_history.json) ────────────────────────────────
 
 _hist_lock = threading.Lock()
-HISTORY_VERSION = 2              # 2 : détail complet par match (duels, côtés, économie…)
+HISTORY_VERSION = 4              # 2 : détail complet par match ; 3 : morts à la spike / chute plus comptées en kills
+                                 # 4 : suite des manches (gagnée / perdue, fin, économie des deux équipes)
+DETAIL_VERSION = 4
 _history: dict = {"puuid": None, "rows": {}, "backfill_at": 0.0, "v": HISTORY_VERSION}
 _hist_loaded = False
 _stored_rows: list = []
@@ -1611,11 +1752,12 @@ def map_report(rows: list[dict], map_name: str, roles: dict | None = None, compe
         lst.sort(key=lambda a: (-a["score"], -a["games"]))
         return lst
 
-    base = [r for r in rows if r["mode"] == "competitive"] if competitive else list(rows)
+    std = [r for r in rows if is_standard(r)] or list(rows)     # sans deathmatch ni escarmouches 2v2
+    base = [r for r in std if r["mode"] == "competitive"] if competitive else list(std)
     scope = "Compétition" if competitive else "Tous les modes"
     on = [r for r in base if r["map"] == map_name]
     if competitive and len(on) < 3:
-        base, scope = list(rows), "Tous les modes"
+        base, scope = list(std), "Tous les modes"
         on = [r for r in base if r["map"] == map_name]
     out = {"map": map_name, "scope": scope, "tip": MAP_TIPS.get(map_name, ""),
            "overall": summ(base), **summ(on), "rounds_diff": sum(r["rw"] - r["rl"] for r in on)}
@@ -1665,7 +1807,344 @@ def map_report(rows: list[dict], map_name: str, roles: dict | None = None, compe
     return out
 
 
-_select_cache = {"key": None, "data": None}
+# ── Conseils de l'écran de sélection : ce que ton historique dit de CETTE partie ──
+# Chaque conseil a une priorité ; on garde les 5 plus utiles. Rien qui répète l'écran
+# (place de la map, série, meilleur agent seul) sans dire quoi en faire.
+
+_NON_STANDARD = ("deathmatch", "hurm", "skirmish", "ggteam", "snowball", "abilitydraft")
+_ROLE_ORDER = ("Contrôleur", "Initiateur", "Sentinelle", "Duelliste")   # le rôle qui manque le plus en premier
+_ROLE_ART = {"Contrôleur": "un contrôleur", "Initiateur": "un initiateur", "Sentinelle": "une sentinelle",
+             "Duelliste": "un duelliste"}
+_SLOT_FR = {"matin": "Le matin", "après-midi": "L’après-midi", "soir": "Le soir", "nuit": "La nuit"}
+SESSION_GAP_S = 2 * 3600          # plus de 2 h entre deux matchs = nouvelle session
+
+
+def is_standard(r: dict) -> bool:
+    """Partie à manches (classée, non classée, premier…) : pas deathmatch, escarmouche 2v2, etc."""
+    m = str(r.get("mode") or "")
+    return not any(m.startswith(x) for x in _NON_STANDARD)
+
+
+def _ts(iso) -> float | None:
+    try:
+        return _dt.datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
+def _won(r) -> str:
+    return "V" if r["rw"] > r["rl"] else "D" if r["rw"] < r["rl"] else "N"
+
+
+def _pctv(a, b):
+    return round(100 * a / b) if b else None
+
+
+def _dec(x) -> str:
+    return f"{x:.1f}".replace(".", ",")
+
+
+def _h(s) -> str:
+    return str(s if s is not None else "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _n(n: int, w: str) -> str:
+    return f"{n} {w}{'s' if n > 1 else ''}"
+
+
+def tips_context(rows: list[dict], map_name: str, competitive: bool = False) -> dict:
+    """Ce dont les conseils ont besoin, calculé une fois par map (le reste dépend du direct)."""
+    std = sorted((r for r in rows if is_standard(r)), key=lambda r: r["at"] or "")
+    pool = [r for r in std if r["mode"] == "competitive"] if competitive else std
+    if len(pool) < 20:                                   # pas assez de classées : comportements sur tout
+        pool = std
+    det = [r for r in pool if isinstance(r.get("detail"), dict)]
+    # Duels par agent (premier kill / première mort)
+    duels: dict = {}
+    for r in det:
+        d = duels.setdefault(r["agent"], [0, 0, 0])
+        d[0] += 1
+        d[1] += r["detail"].get("fb", 0)
+        d[2] += r["detail"].get("fd", 0)
+    # Économie et pistolets (partout, puis sur la map)
+    eco = {"eco": [0, 0], "force": [0, 0], "full": [0, 0]}
+    pis_all, pis_map = [0, 0], [0, 0]
+    for r in det:
+        for t in eco:
+            x = (r["detail"].get("eco") or {}).get(t)
+            if x:
+                eco[t][0] += x[0]
+                eco[t][1] += x[1]
+        p = r["detail"].get("pistol")
+        if p:
+            pis_all[0] += p[0]
+            pis_all[1] += p[1]
+            if r["map"] == map_name:
+                pis_map[0] += p[0]
+                pis_map[1] += p[1]
+    # Sessions : rang du match dans la session, défaites de suite juste avant
+    seq, prev_t, idx, losses = [], None, 0, 0
+    for r in std:
+        t = _ts(r["at"])
+        if t is None:
+            continue
+        if prev_t is None or t - prev_t > SESSION_GAP_S:
+            idx, losses = 0, 0
+        idx += 1
+        res = _won(r)
+        seq.append({"t": t, "res": res, "idx": idx, "before_losses": losses})
+        losses = losses + 1 if res == "D" else 0
+        prev_t = t
+    # Créneaux, solo ou groupe
+    slots: dict = {}
+    for r in pool:
+        sl = _local_slot(r["at"])
+        if sl:
+            slots.setdefault(sl, []).append(_won(r))
+    party = {"solo": [0, 0], "group": [0, 0]}
+    for r in det:
+        k = "group" if r["detail"].get("mates") else "solo"
+        party[k][0] += int(_won(r) == "V")
+        party[k][1] += 1
+    wins = sum(1 for r in pool if _won(r) == "V")
+    seq_wr = _pctv(sum(1 for x in seq if x["res"] == "V"), len(seq))
+    tot = [sum(d[0] for d in duels.values()), sum(d[1] for d in duels.values()), sum(d[2] for d in duels.values())]
+    return {"games": len(pool), "winrate": _pctv(wins, len(pool)), "seq_winrate": seq_wr,
+            "duels": duels, "duels_all": tot, "eco": eco,
+            "pistol_all": pis_all, "pistol_map": pis_map, "seq": seq,
+            "slots": {k: [v.count("V"), len(v)] for k, v in slots.items()}, "party": party}
+
+
+def pregame_tips(rep: dict, ctx: dict, live: dict, now: float | None = None) -> list[dict]:
+    """Conseils pour la partie qui commence : [{"k", "t" (html avec <b>), "cls": good|bad|"", "p"}], 5 au plus."""
+    if not rep:
+        return []
+    now = now or time.time()
+    out: list = []
+    add = lambda p, k, t, cls="": out.append({"p": p, "k": k, "t": t, "cls": cls})
+    roles = rep.get("role_of") or {}
+    me = live.get("agent") or ""
+    locked = live.get("agent_state") in ("locked", "ingame") or live.get("state") == "INGAME"
+    my_role = roles.get(me, "")
+    here = {a["name"]: a for a in rep.get("agents") or []}
+    every = {a["name"]: a for a in rep.get("agents_all") or []}
+    mp = _h(rep.get("map"))
+    ov = (rep.get("overall") or {}).get("winrate")
+    sc = lambda a: (a["wins"] + 2) / (a["games"] + 4)            # score prudent (petits échantillons)
+
+    def best_in(role: str, exclude: str = ""):
+        """Ton meilleur agent d'un rôle : d'abord sur cette map (2 matchs), sinon partout (3 matchs)."""
+        c = [a for a in here.values() if a["role"] == role and a["name"] != exclude and a["games"] >= 2]
+        if c:
+            return max(c, key=sc), True
+        c = [a for a in every.values() if a["role"] == role and a["name"] != exclude and a["games"] >= 3]
+        return (max(c, key=sc), False) if c else (None, False)
+
+    def stat(a, on_map):
+        ici = " ici" if on_map else ""
+        txt = f"{a['wins']} V sur {a['games']}{ici}" if a["games"] < 5 else f"{a['winrate']} %{ici} sur {a['games']} matchs"
+        g = every.get(a["name"])
+        if on_map and g and g["games"] >= a["games"] + 3:
+            txt += f", {g['winrate']} % partout"
+        return txt
+
+    # 1. Le choix d'agent (tant que tu n'as pas verrouillé)
+    team = live.get("team") or []
+    others = [t for t in team if t.get("agent") and not t.get("self")]
+    cnt: dict = {}
+    for t in others:
+        r = roles.get(t["agent"])
+        if r:
+            cnt[r] = cnt.get(r, 0) + 1
+    if not locked and len(others) >= 2:
+        missing = [r for r in _ROLE_ORDER if not cnt.get(r)]
+        last = len(others) >= 4
+        if missing and my_role in missing and (my_role != "Duelliste" or last):
+            a = here.get(me)
+            ok = a and a["games"] >= 2 and a["winrate"] >= 50
+            add(70, "Compo", f"{_h(me)} comble le rôle qui manque ({_h(my_role.lower())})."
+                + (f" Ici : <b>{a['wins']} V sur {a['games']}</b>." if ok else ""), "good")
+        elif missing and missing[0] != "Duelliste":
+            r = missing[0]
+            a, on_map = best_in(r)
+            many = cnt.get("Duelliste", 0) >= 2 and my_role == "Duelliste"
+            head = f"Déjà {cnt['Duelliste']} duellistes. " if many else ""
+            head += ("Il reste toi : il manque " if last else "Personne pour l’instant en " if not many else "Il manque ")
+            head += f"<b>{_h(_ROLE_ART[r] if (last or many) else r.lower())}</b>."
+            if a and sc(a) >= 0.45:
+                add(90, "Compo", f"{head} Ton meilleur : <b>{_h(a['name'])}</b>, {stat(a, on_map)}.", "bad")
+            elif a:
+                add(85, "Compo", f"{head} Celui que tu joues le plus : {_h(a['name'])} ({stat(a, on_map)}).", "bad")
+            elif last:
+                add(85, "Compo", f"{head} Tu n’en as jamais joué en partie : prends le plus simple à poser.", "bad")
+        if my_role == "Duelliste" and cnt.get("Duelliste", 0) >= 2 and not any(o["k"] == "Compo" for o in out):
+            add(75, "Compo", f"Déjà <b>{cnt['Duelliste']} duellistes</b> chez tes coéquipiers : un 3e laisse un trou dans la compo.", "bad")
+
+    # 2. Ton agent sur cette map
+    mine, mine_all = here.get(me), every.get(me)
+    if me and not locked:
+        if mine and mine["games"] >= 3 and sc(mine) < 0.42:
+            alt, on_map = best_in(my_role, exclude=me)
+            if alt and sc(alt) >= sc(mine) + 0.1:
+                add(80, "Ton agent", f"{_h(me)} ici : <b>{mine['wins']} V sur {mine['games']}</b>. "
+                    f"Même rôle, {_h(alt['name'])} fait mieux : {stat(alt, on_map)}.", "bad")
+            elif mine_all and mine_all["games"] >= mine["games"] + 5 and mine_all["winrate"] >= mine["winrate"] + 10:
+                add(65, "Ton agent", f"{_h(me)} ici : <b>{mine['wins']} V sur {mine['games']}</b>, "
+                    f"contre {mine_all['winrate']} % sur tes autres maps.", "bad")
+        elif (not mine_all or mine_all["games"] < 3) and rep.get("scope") == "Compétition":
+            main = max((a for a in every.values() if a["games"] >= 10), key=sc, default=None)
+            if main and main["name"] != me and main["winrate"] >= 50:
+                n = mine_all["games"] if mine_all else 0
+                add(60, "Ton agent", f"{_h(me)} : {'jamais joué' if not n else _n(n, 'match') + ' seulement'} en classé. "
+                    f"Ton <b>{_h(main['name'])}</b> est plus sûr : {main['winrate']} % sur {main['games']} matchs.", "bad")
+        elif mine and mine["games"] >= 4 and sc(mine) >= 0.6:
+            add(35, "Ton agent", f"Bon choix : {_h(me)} ici, <b>{mine['wins']} V sur {mine['games']}</b>"
+                + (f", K/D {_dec(mine['kd'])}." if mine.get("kd") is not None else "."), "good")
+        # Ton rôle sur cette map, face à tes autres rôles
+        rl = {x["role"]: x for x in rep.get("roles") or [] if x["games"] >= 4}
+        if my_role in rl:
+            best_r = max(rl.values(), key=lambda x: x["winrate"])
+            if best_r["role"] != my_role and best_r["winrate"] - rl[my_role]["winrate"] >= 15:
+                add(55, "Ton rôle", f"Sur {mp}, en {_h(best_r['role'].lower())} tu gagnes <b>{best_r['winrate']} %</b> "
+                    f"({best_r['games']} matchs), en {_h(my_role.lower())} {rl[my_role]['winrate']} % ({rl[my_role]['games']}).", "bad")
+
+    # 3. Tes duels avec cet agent
+    dd = (ctx.get("duels") or {}).get(me)
+    if me and dd and dd[0] >= 5:
+        g, fb, fd = dd
+        fbg, fdg = fb / g, fd / g
+        ta = ctx.get("duels_all") or [0, 0, 0]
+        avg = f" (ta moyenne : {_dec(ta[2] / ta[0])})" if ta[0] >= g + 5 else ""
+        if my_role == "Duelliste":
+            if fd > fb * 1.25:
+                add(58, "Duels", f"Avec {_h(me)} : <b>{_dec(fdg)} premières morts par match</b>{avg}, pour {_dec(fbg)} premier kill. "
+                    "Entre juste après une utilitaire, avec un coéquipier prêt à te venger.", "bad")
+            elif fb >= fd * 1.25:
+                add(40, "Duels", f"Avec {_h(me)} tu ouvres bien : <b>{_dec(fbg)} premier kill</b> par match pour {_dec(fdg)} première mort. "
+                    "Prends les entrées.", "good")
+        elif fdg >= 2 and fd > fb * 1.3:
+            add(60, "Duels", f"Avec {_h(me)} : <b>{_dec(fdg)} premières morts par match</b>{avg}. "
+                "Laisse l’entrée aux duellistes et joue un temps derrière.", "bad")
+
+    # 4. Côté de départ et pistolet
+    sd = rep.get("sides") or {}
+    side = live.get("side")
+    if side in ("attack", "defense") and sd.get("atk") is not None and sd.get("def") is not None \
+            and min(sd.get("atk_rounds") or 0, sd.get("def_rounds") or 0) >= 20:
+        atk = side == "attack"
+        first, second = (sd["atk"], sd["def"]) if atk else (sd["def"], sd["atk"])
+        nm, other = ("attaque", "défense") if atk else ("défense", "attaque")
+        if second - first >= 8:
+            add(50, "Côté", f"Tu commences en <b>{nm}</b>, ton côté faible ici ({first} % de manches, contre {second} % en {other}). "
+                "Une mi-temps serrée, c’est déjà bien.", "bad")
+        elif first - second >= 8:
+            add(45, "Côté", f"Tu commences en <b>{nm}</b>, ton côté fort ici ({first} % de manches, contre {second} % en {other}). "
+                "Prends de l’avance avant la mi-temps.", "good")
+    pm, pa = ctx.get("pistol_map") or [0, 0], ctx.get("pistol_all") or [0, 0]
+    pw, pr, where = (pm[0], pm[1], " ici") if pm[1] >= 10 else (pa[0], pa[1], "")
+    if pr >= 10:
+        p = _pctv(pw, pr)
+        if p <= 40:
+            add(45, "Pistolet", f"Tu gagnes <b>{p} % des pistolets</b>{where} ({pr} manches). "
+                "Gagner le premier lance souvent les deux suivantes : joue groupé.", "bad")
+        elif p >= 62:
+            add(20, "Pistolet", f"Tu gagnes <b>{p} % des pistolets</b>{where} ({pr} manches) : bon départ probable.", "good")
+
+    # 5. Économie
+    ec = ctx.get("eco") or {}
+    fo, fu, e = ec.get("force") or [0, 0], ec.get("full") or [0, 0], ec.get("eco") or [0, 0]
+    if fo[1] >= 20 and fu[1] >= 20:
+        fop, fup = _pctv(*fo), _pctv(*fu)
+        ep = _pctv(*e) if e[1] >= 20 else None
+        if fop <= 35 and fup - fop >= 20:
+            add(50, "Économie", f"Tes force-buy gagnent <b>{fop} % des manches</b> ({fo[1]}), contre {fup} % quand tout le monde est équipé. "
+                "Mieux vaut une vraie éco pour acheter en entier ensuite.", "bad")
+        elif ep is not None and ep >= fop - 3:
+            add(40, "Économie", f"Tes manches éco gagnent presque autant que tes force-buy ({ep} % contre {fop} %). "
+                "Garde l’argent pour un full achat.", "bad")
+
+    # 6. Ta session : tilt et fatigue, d'après ce qui t'arrive d'habitude
+    seq = ctx.get("seq") or []
+    cur = []
+    if seq and now - seq[-1]["t"] <= SESSION_GAP_S:
+        i = len(seq) - 1
+        while i >= 0:
+            cur.insert(0, seq[i])
+            if seq[i]["idx"] == 1:
+                break
+            i -= 1
+    allwr = ctx.get("winrate")
+    swr = ctx.get("seq_winrate")
+    if cur and swr is not None:
+        ls = 0
+        for x in reversed(cur):
+            if x["res"] != "D":
+                break
+            ls += 1
+        nxt = len(cur) + 1
+        k = next((j for j in range(min(ls, 3), 0, -1) if sum(1 for x in seq if x["before_losses"] >= j) >= 8), 0)
+        if ls >= 2 and k:
+            after = [x for x in seq if x["before_losses"] >= k]
+            w = _pctv(sum(1 for x in after if x["res"] == "V"), len(after))
+            apres = "une défaite" if k == 1 else f"{k} défaites de suite"
+            if w <= swr - 8:
+                add(88, "Session", f"<b>{_n(ls, 'défaite')} de suite</b>. Après {apres}, tu gagnes "
+                    f"{w} % du match suivant (ta moyenne : {swr} %). Une pause de 10 minutes peut valoir le coup.", "bad")
+            elif w >= swr - 2:
+                add(45, "Session", f"{_n(ls, 'défaite')} de suite, mais après {apres} tu gagnes {w} % du match suivant "
+                    f"(ta moyenne : {swr} %). Rien ne dit que ça va continuer.", "")
+        if not any(o["k"] == "Session" for o in out) and nxt >= 4:
+            late = [x for x in seq if x["idx"] >= nxt]
+            early = [x for x in seq if x["idx"] <= 3]
+            if len(late) >= 10 and len(early) >= 10:
+                lw = _pctv(sum(1 for x in late if x["res"] == "V"), len(late))
+                ew = _pctv(sum(1 for x in early if x["res"] == "V"), len(early))
+                if ew - lw >= 8:
+                    add(70, "Session", f"<b>{nxt}e match</b> de la session. À partir du {nxt}e, tu gagnes {lw} % "
+                        f"(contre {ew} % sur les 3 premiers).", "bad")
+
+    # 7. L'heure
+    sl = _local_slot(_dt.datetime.fromtimestamp(now, _dt.timezone.utc).isoformat())
+    x = (ctx.get("slots") or {}).get(sl)
+    if x and x[1] >= 15 and allwr is not None:
+        w = _pctv(*x)
+        if w <= allwr - 7:
+            add(35, "Horaire", f"{_SLOT_FR.get(sl, sl)} tu gagnes <b>{w} %</b> de tes matchs ({x[1]}), ta moyenne est à {allwr} %.", "bad")
+
+    # 8. Seul ou en groupe
+    pt = ctx.get("party") or {}
+    so, gr = pt.get("solo") or [0, 0], pt.get("group") or [0, 0]
+    if team or live.get("players"):
+        grouped = any(t.get("party") for t in (team or live.get("players") or []) if not t.get("self"))
+        if so[1] >= 10 and gr[1] >= 10:
+            sw, gw = _pctv(*so), _pctv(*gr)
+            if grouped and sw - gw >= 8:
+                add(30, "Groupe", f"En groupe tu gagnes <b>{gw} %</b> ({gr[1]} matchs), seul {sw} %. "
+                    "Parle aussi aux deux autres, pas seulement à ton groupe.", "bad")
+            elif not grouped and gw - sw >= 8:
+                add(30, "Seul", f"Seul tu gagnes <b>{sw} %</b> ({so[1]} matchs), en groupe {gw} %. Parle tôt à ton équipe.", "bad")
+
+    # 9. La map, seulement si elle sort vraiment de ta moyenne
+    if rep.get("games", 0) >= 5 and ov is not None and rep.get("winrate") is not None:
+        d = rep["winrate"] - ov
+        if d >= 8:
+            add(30, "Ta map", f"Une de tes bonnes maps : <b>{rep['winrate']} %</b> sur {rep['games']} matchs (moyenne {ov} %).", "good")
+        elif d <= -8:
+            add(40, "Ta map", f"Map difficile pour toi : <b>{rep['winrate']} %</b> sur {rep['games']} matchs (moyenne {ov} %). "
+                "Joue ce que tu maîtrises le mieux.", "bad")
+
+    out.sort(key=lambda o: -o["p"])
+    seen, res = {}, []
+    for o in out:                                       # 2 conseils au plus par thème
+        if seen.get(o["k"], 0) >= (2 if o["k"] == "Compo" else 1):
+            continue
+        seen[o["k"]] = seen.get(o["k"], 0) + 1
+        res.append(o)
+    return res[:5]
+
+
+_select_cache = {"key": None, "data": None, "ctx": None}
+_tips_cache = {"key": None, "data": []}
 
 
 def _select_report(live: dict) -> dict | None:
@@ -1680,11 +2159,24 @@ def _select_report(live: dict) -> dict | None:
             _load_agents()
         except Exception:
             pass
-        rep = map_report(merge_rows(_stored_rows, hist), live["map"], _roles, comp)
+        rows = merge_rows(_stored_rows, hist)
+        rep = map_report(rows, live["map"], _roles, comp)
         if rep is not None:
             rep["role_of"] = dict(_roles)                # nom d'agent → rôle, pour la compo de ton équipe
-        _select_cache.update(key=key, data=rep)
-    return copy.deepcopy(_select_cache["data"])
+        _select_cache.update(key=key, data=rep, ctx=tips_context(rows, live["map"], comp) if rep else None)
+    rep = copy.deepcopy(_select_cache["data"])
+    if rep is not None:
+        sig = lambda ts: [(t.get("agent"), t.get("self"), t.get("party"), t.get("team")) for t in ts or []]
+        tkey = (key, live.get("agent"), live.get("agent_state"), live.get("state"), live.get("side"),
+                str(sig(live.get("team"))), str(sig(live.get("players"))), int(time.time() // 300))
+        if _tips_cache["key"] != tkey:
+            try:
+                _tips_cache.update(key=tkey, data=pregame_tips(rep, _select_cache["ctx"] or {}, live))
+            except Exception as e:
+                _note(f"conseils indisponibles ({e})")
+                _tips_cache.update(key=tkey, data=[])
+        rep["tips"] = copy.deepcopy(_tips_cache["data"])
+    return rep
 
 
 _acts_cache = {"at": 0.0, "data": None}
@@ -1823,6 +2315,28 @@ def _henrik_refresh() -> None:
             print(f"[VALORANT] Stats indisponibles : {e}")
 
 
+_henrik_thread: threading.Thread | None = None
+
+
+def _maybe_henrik_async(running: bool) -> None:
+    """Lance le rafraîchissement HenrikDev à côté de la boucle locale.
+
+    Les appels HenrikDev (jusqu'à 4 requêtes de 12 s chacune + calcul des stats) bloquaient
+    la boucle : l'état local n'était plus relu, devenait périmé (> _LIVE_STALE_S) et le
+    panel passait à valorant=None alors que le jeu était ouvert.
+    """
+    global _henrik_thread
+    if _henrik_thread is not None and _henrik_thread.is_alive():
+        return
+    if _api_key():
+        with _lock:
+            if time.time() < _state["henrik"]["next"]:
+                return
+    _henrik_thread = threading.Thread(target=_maybe_henrik, args=(running,), daemon=True,
+                                      name="valorant_henrik")
+    _henrik_thread.start()
+
+
 def _maybe_henrik(running: bool) -> None:
     if not _api_key():
         with _lock:
@@ -1879,10 +2393,11 @@ def _loop() -> None:
                 while _pending_refresh and _pending_refresh[0] <= now:
                     _pending_refresh.pop(0)
                     _henrik_reschedule(0)
-            _maybe_henrik(running)
+            _maybe_henrik_async(running)
             prev_loop, prev_running = loop_state, running
         else:
             _set_live_off()
+            _local_miss["n"] = 0
             prev_loop, prev_running = None, False
         _wake.clear()
         _wake.wait(2.0 if prev_running else 5.0)

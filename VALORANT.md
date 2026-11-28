@@ -98,9 +98,28 @@ et il se ferme seul au lancement de la sélection suivante.
   meilleure manche, kills par arme, badge MVP du match ou de ton équipe.
 - Manches : gagnée ou perdue, comment (E élimination, S spike explosé, D désamorcé, T temps écoulé),
   tes kills, cérémonies (Flawless, Thrifty, Clutch…), et la courbe d'économie des deux équipes.
-- Tableau des scores des 10 joueurs.
+- Tableau des scores des 10 joueurs, avec la note de chacun.
 - Pseudos : seulement le tien et ceux de ton groupe. Les autres joueurs sont désignés par leur agent,
   pour respecter le mode incognito.
+
+### Note de perf (sur 1000)
+
+Dans l'esprit du Tracker Score : 500 = un joueur moyen en classé. Affichée en haut du récap
+(avec ta place dans le lobby et le détail par critère), dans le tableau des scores pour les 10 joueurs,
+et sur chaque carte des derniers matchs (panneau 04) avec ta place dans le lobby.
+
+- Critères, chacun comparé à un joueur moyen puis pondéré : kills par manche (25 %), dégâts par manche (25 %),
+  KAST (15 %), survie (10 %), entrées : first bloods moins first deaths (10 %), impact : 3K / 4K / Ace et clutchs (10 %),
+  assists (5 %). Un petit bonus ou malus selon les manches gagnées par l'équipe.
+- Lettres : S dès 850, A+ dès 750, A dès 650, B+ dès 560, B dès 470, C dès 380, D en dessous.
+- Le détail est sur 100, 50 = dans la moyenne (blanc au-dessus, rouge en dessous).
+- Ce n'est pas le vrai Tracker Score (sa formule n'est pas publique) : les chiffres peuvent différer un peu.
+
+### Mort à la spike
+
+Quand tu meurs de la spike (ou d'une chute), Riot te met comme ton propre tueur. Ces morts, et les alliés tués,
+ne comptent plus comme des kills (kills par manche, kills par arme, 3K / 4K / Ace, first bloods, KAST).
+L'historique local passe au format 3 : le rattrapage se relance une fois pour corriger les anciens matchs.
 
 ## Images des agents
 
@@ -172,6 +191,9 @@ beaucoup de côté. Pour compléter :
   le nombre de matchs connus et leur origine.
 - Jusqu'où Riot laisse remonter n'est pas documenté : le premier rattrapage le dira.
 - Supprimer `valorant_history.json` remet l'historique local à zéro (il sera reconstruit au rattrapage suivant).
+- Format 4 : chaque match garde aussi la suite de ses manches (gagnée ou perdue, comment elle s'est finie,
+  côté de départ, équipement total des deux équipes). Ça servira à régler les chances de victoire
+  (manche pistolet, manche d'après, économie). Le rattrapage se relance une fois pour l'ajouter aux anciens matchs.
 
 ## Écran Stats : d'où viennent les données
 
@@ -180,6 +202,22 @@ beaucoup de côté. Pour compléter :
 - Le DDΔ et les combos utilisent tout l'historique.
 - Après la mise à jour, l'historique local passe au format 2 et le rattrapage se relance une fois
   pour récupérer ce détail.
+
+## Touche V : dashboard Valorant ou dashboard classique
+
+Quand le jeu est ouvert, V passe du dashboard Valorant au dashboard classique (les contrôles du boîtier)
+et inversement. Les boutons « Panneau de contrôle » et « ◆ Dashboard Valorant » font la même chose.
+Quand le jeu est fermé, il n'y a que le dashboard classique et V ne fait rien.
+
+## Paroles (touche L)
+
+Quand un morceau avec des paroles synchronisées passe, un panneau « Paroles » s'affiche : sous le rang
+dans le dashboard, et sous ton agent sur les écrans Stats, sélection d'agent et en partie.
+Il montre l'artiste et le titre, la ligne d'avant, la ligne en cours en grand, la ligne d'après et
+la progression du morceau. Il disparaît quand il n'y a plus de paroles.
+
+Touche L : automatique → toujours affiché (avec l'état : recherche, pas de paroles, sans synchro…) → masqué.
+Le choix est mémorisé.
 
 ## Écran en partie (automatique)
 
@@ -194,7 +232,9 @@ réplication) et se ferme à la fin. Échap (ou « Dashboard ») bascule avec le
 - Fil du match : chaque manche gagnée (blanc) ou perdue (rouge), et l'écart au score (ligne dorée).
   Les manches jouées avant l'ouverture de la page apparaissent en gris (on ne sait pas qui les a gagnées).
 - Chances de victoire : une estimation, avec ce qu'elles deviennent si vous gagnez ou perdez la prochaine manche.
-  Calcul : chaque manche se gagne avec ton % de manches gagnées de ce côté sur la map, ramené vers 50 %.
+  Calcul : chaque manche part à 50 %, et l'équipe menée gagne un peu plus souvent (+1,5 point par manche de retard,
+  -1,5 par manche d'avance). Réglé sur 180 matchs classés : avec ce réglage, les remontadas sont mieux prévues,
+  alors que ton % par côté sur la map faisait moins bien qu'un simple 50/50.
 - Les deux équipes : agents, rôles, niveaux visibles, ton groupe, et le compte par rôle.
 - En bas : attaque et défense sur la map, ton agent ici, ta journée, ta série, ton rang.
 
@@ -222,8 +262,18 @@ Même style que l'écran Stats :
 - Ton équipe : les 5 agents (verrouillé ou en sélection), leur rôle, et le compte par rôle (en rouge s'il en manque).
 - Tes meilleurs agents sur cette map (« conseillé » s'il comble un rôle manquant), tes derniers matchs ici,
   tes rôles sur cette map.
-- Conseils tirés de ton historique : rôle manquant, ton meilleur agent ici, ton agent si ça se passe mal ici,
-  la map pour toi, le côté de départ, ta série du moment.
+- Conseils tirés de ton historique (5 au plus, les plus utiles d'abord), calculés par
+  `valorant_source.pregame_tips` : seulement ce que l'écran ne dit pas déjà, avec quoi en faire.
+  - Tant que tu n'as pas verrouillé : le rôle qui manque et ton meilleur agent pour le remplir,
+    un autre agent du même rôle s'il fait mieux ici, ton main si tu prends un agent jamais joué en classé,
+    ton rôle sur cette map face à tes autres rôles.
+  - Toujours : tes premières morts avec cet agent (comparées à ta moyenne), ton côté de départ s'il est
+    nettement plus faible ou plus fort ici, tes pistolets s'ils sont bas, tes force-buy s'ils gagnent peu,
+    ta session (après 2 défaites de suite, ce qui t'arrive d'habitude au match suivant ; à partir du 4e match,
+    si tu gagnes moins tard dans la session), ton créneau horaire s'il est faible, solo ou groupe,
+    et la map seulement si elle sort de ta moyenne de 8 points.
+  - Une session = des matchs à moins de 2 h d'écart. Les deathmatchs et escarmouches 2v2 ne comptent
+    ni dans les conseils ni dans « ta moyenne ».
 - En bas : ta journée, ta série, tes 10 derniers matchs, ton rang et les RR qui manquent, solo ou en groupe.
 
 Les stats viennent de la même base que l'écran Stats (HenrikDev + historique local) : compétition si la partie
