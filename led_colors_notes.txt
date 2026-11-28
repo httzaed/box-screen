@@ -1,0 +1,20 @@
+
+# 2026-11-17 01:18
+coral       255, 80, 60  white pink
+peach       255,160,100  white pink as well
+gold        255,175,  0  yellow green
+yellow      255,200,  0  bright yellow
+green         0,255,100  cyan
+emerald       0,180, 90  light blue
+mint        100,255,180  white blue
+cyan          0,200,255  light blue
+ice         150,230,255  white blue
+azure         0,130,255  white blue
+blue          0, 80,255  blue
+indigo       75,  0,255  indigo
+lavender    180,130,255  white lavender
+rose        255,105,180  white pink
+warm_white  255,210,150  white
+
+# 2026-11-17 01:25
+peach       255, 80, 25  white peach
